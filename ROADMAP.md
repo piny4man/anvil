@@ -42,7 +42,7 @@ Steps 2–5 can proceed in parallel after Step 1. Step 6 unifies them into the f
   - Depends on: Step 1
   - ~200 lines
 
-- [ ] **Step 3: UI Module** — Theme, spinner, prompt wrappers, and the full `UiContext` that controls `--yes`, `--quiet`, `--dry-run` behavior.
+- [x] **Step 3: UI Module** — Theme, spinner, prompt wrappers, and the full `UiContext` that controls `--yes`, `--quiet`, `--dry-run` behavior.
   - Delivers: `src/ui/mod.rs` (UiContext), `src/ui/theme.rs`, `src/ui/spinner.rs`, `src/ui/prompt.rs`, `src/ui/summary.rs`
   - Depends on: Step 1
   - ~300 lines

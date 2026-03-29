@@ -49,3 +49,11 @@ Rust edition: **2024**
 - Symlinks: check if dest already points to correct src before touching it
 - Hooks stream stdout/stderr live with `│ ` prefix — don't capture, pipe it
 - Integration tests use `tempfile::tempdir()` — never touch the real home directory
+
+## Agent Routing
+- After implementing any new Rust function, module, or struct → delegate to the `documentation-expert` agent
+- When asked to "add docs" or "document" anything → always use the `documentation-expert` agent
+- Never write documentation inline in the main session
+- After implementing any new Rust change, delegate to `rust-pro` agent
+- On every cli ui plan check with `cli-ui-designer` agent
+- On every cli ui change delegate to `cli-ui-designer` agent

@@ -235,7 +235,7 @@ cargo fmt --check              # check formatting
 
 ## Project Status
 
-anvil is in early development, working through [Phase 1](ROADMAP.md#phase-1--interactive-mvp) of the roadmap.
+anvil is in early development, working through **Phase 3** of the roadmap.
 
 | Step | Status |
 |------|--------|
