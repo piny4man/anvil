@@ -37,7 +37,7 @@ Steps 2–5 can proceed in parallel after Step 1. Step 6 unifies them into the f
   - Tests: 14 unit tests for manifest parsing
   - ~250 lines
 
-- [ ] **Step 2: CLI Skeleton** — Clap derive structs, stub command files, main dispatch loop.
+- [x] **Step 2: CLI Skeleton** — Clap derive structs, stub command files, main dispatch loop.
   - Delivers: `src/cli/mod.rs`, `src/cli/{init,sync,apply,add,status,doctor}.rs` (stubs), `src/main.rs` dispatch
   - Depends on: Step 1
   - ~200 lines

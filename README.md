@@ -235,9 +235,18 @@ cargo fmt --check              # check formatting
 
 ## Project Status
 
-anvil is in early development. The manifest format and parsing are complete with full test coverage. The interactive CLI, linking engine, and git integration are being built now.
+anvil is in early development, working through [Phase 1](ROADMAP.md#phase-1--interactive-mvp) of the roadmap.
 
-See [ROADMAP.md](ROADMAP.md) for the detailed implementation plan.
+| Step | Status |
+|------|--------|
+| 1. Foundation (error types, config structs) | Done |
+| 2. CLI Skeleton (clap dispatch, stub commands) | Done |
+| 3. UI Module (UiContext, prompts, spinners) | — |
+| 4. Git Backend (GitBackend trait, ShellGit) | — |
+| 5. Linker (symlinks, copy fallback) | — |
+| 6–9. Commands & polish | — |
+
+See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## License
 
