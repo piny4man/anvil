@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
-pub fn run(_file: PathBuf, _profile: Option<String>) -> crate::error::Result<()> {
+use crate::ui::UiContext;
+
+pub fn run(_file: PathBuf, _profile: Option<String>, _ctx: &UiContext) -> crate::error::Result<()> {
     Ok(())
 }
