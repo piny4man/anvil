@@ -98,7 +98,8 @@ Production hardening and public release.
 
 - [ ] `doctor` command
 - [ ] `--dry-run` support on all write commands
-- [ ] GitHub Actions: CI + cross-platform release binaries (Linux x86_64, macOS x86_64/aarch64)
+- [x] GitHub Actions: CI (fmt, clippy, tests on PRs)
+- [ ] GitHub Actions: cross-platform release binaries (Linux x86_64, macOS x86_64/aarch64)
 - [ ] `libgit2` backend (no git binary required)
 - [ ] Shell completions via clap (bash, zsh, fish)
 - [ ] Publish to crates.io

@@ -235,13 +235,13 @@ cargo fmt --check              # check formatting
 
 ## Project Status
 
-anvil is in early development, working through **Phase 3** of the roadmap.
+anvil is in early development, working through **Phase 1** of the roadmap.
 
 | Step | Status |
 |------|--------|
 | 1. Foundation (error types, config structs) | Done |
 | 2. CLI Skeleton (clap dispatch, stub commands) | Done |
-| 3. UI Module (UiContext, prompts, spinners) | — |
+| 3. UI Module (UiContext, prompts, spinners) | Done |
 | 4. Git Backend (GitBackend trait, ShellGit) | — |
 | 5. Linker (symlinks, copy fallback) | — |
 | 6–9. Commands & polish | — |
