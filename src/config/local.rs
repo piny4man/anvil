@@ -1,3 +1,11 @@
+//! Local anvil state management.
+//!
+//! Handles the per-machine config file (`~/.config/anvil.toml`) that records
+//! which dotfiles repo to use and which profiles are active. This is anvil's
+//! own bookkeeping -- distinct from the `anvil.toml` manifest inside the
+//! dotfiles repo itself. Also provides repo discovery logic used by most
+//! subcommands.
+
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -10,7 +18,9 @@ use crate::error::{AnvilError, Result};
 /// Written by `init`, read by `sync` and `apply` to discover the repo.
 #[derive(Debug, Deserialize)]
 pub struct LocalConfig {
+    /// Path to the cloned dotfiles repo (may contain `~/`).
     pub clone_dir: String,
+    /// Active profile names. Empty means "use manifest default".
     #[serde(default)]
     pub profiles: Vec<String>,
 }
@@ -68,13 +78,13 @@ impl LocalConfig {
         doc["profiles"] = value(arr);
 
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| AnvilError::ConfigRead {
+            std::fs::create_dir_all(parent).map_err(|e| AnvilError::ConfigWrite {
                 path: parent.to_path_buf(),
                 source: e,
             })?;
         }
 
-        std::fs::write(path, doc.to_string()).map_err(|e| AnvilError::ConfigRead {
+        std::fs::write(path, doc.to_string()).map_err(|e| AnvilError::ConfigWrite {
             path: path.to_path_buf(),
             source: e,
         })?;
@@ -83,9 +93,11 @@ impl LocalConfig {
     }
 }
 
-/// Expands a leading `~/` to the user's home directory.
+/// Expands a leading `~` or `~/` to the user's home directory.
 pub fn expand_tilde(path: &str) -> Result<PathBuf> {
-    if let Some(rest) = path.strip_prefix("~/") {
+    if path == "~" {
+        dirs::home_dir().ok_or(AnvilError::HomeDirNotFound)
+    } else if let Some(rest) = path.strip_prefix("~/") {
         let home = dirs::home_dir().ok_or(AnvilError::HomeDirNotFound)?;
         Ok(home.join(rest))
     } else {
@@ -203,5 +215,12 @@ mod tests {
         let config = LocalConfig::load_from(&path).unwrap().unwrap();
         assert_eq!(config.clone_dir, "~/.dotfiles");
         assert!(config.profiles.is_empty());
+    }
+
+    #[test]
+    fn test_expand_bare_tilde() {
+        let expanded = expand_tilde("~").unwrap();
+        let home = dirs::home_dir().unwrap();
+        assert_eq!(expanded, home);
     }
 }

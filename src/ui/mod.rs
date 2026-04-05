@@ -101,6 +101,13 @@ impl UiContext {
         Some(spinner::start(msg))
     }
 
+    /// Prints an informational message to stdout. Suppressed by `--quiet`.
+    pub fn info(&self, msg: &str) {
+        if !self.quiet {
+            println!("{}{msg}", theme::INDENT);
+        }
+    }
+
     /// Prints a green success message. Suppressed by `--quiet`.
     pub fn success(&self, msg: &str) {
         if !self.quiet {

@@ -57,6 +57,9 @@ After this phase, a user who manually clones their dotfiles repo and writes a lo
 - [x] `ApplySummary` correctly counts linked/skipped/failed and prints via `UiContext`
 - [x] Unit tests for local config read/write, linker symlink creation, idempotency, and conflict detection
 - [x] `--quiet` suppresses non-error output from apply
+- [x] ROADMAP.md updated (Step 5 checked off, Step 6 noted as partial)
+- [x] `rust-pro` agent review
+- [x] `documentation-expert` agent review
 
 ---
 

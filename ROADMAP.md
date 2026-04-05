@@ -52,14 +52,15 @@ Steps 2–5 can proceed in parallel after Step 1. Step 6 unifies them into the f
   - Depends on: Step 1
   - ~150 lines
 
-- [ ] **Step 5: Linker** — Symlink creation/verification, copy-mode fallback, and path expansion via `dirs::home_dir()`.
-  - Delivers: `src/linker/mod.rs`, `src/linker/symlink.rs`, `src/linker/copy.rs`, `ResolvedLink` struct
+- [x] **Step 5: Linker** — Symlink creation/verification, copy-mode fallback, and path expansion via `dirs::home_dir()`.
+  - Delivers: `src/linker/mod.rs` (`ResolvedLink` struct, symlink + copy in one module), `src/config/local.rs` (local state + repo discovery)
   - Depends on: Step 1
   - ~250 lines
 
 - [ ] **Step 6: apply command** — The core user-facing flow: parse manifest, resolve links, run linker, handle conflicts with interactive prompts, print summary.
   - Delivers: full `src/cli/apply.rs`, hooks execution (`src/hooks/mod.rs`)
   - Depends on: Steps 2, 3, 4, 5
+  - Status: apply command implemented (repo discovery, profile resolution, linking, conflict handling, summary). Hooks deferred to plan Phase 5.
   - ~200 lines
 
 - [ ] **Step 7: init command** — Prompt for repo URL, clone, parse manifest, run apply.

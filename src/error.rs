@@ -10,6 +10,12 @@ pub enum AnvilError {
         source: std::io::Error,
     },
 
+    #[error("failed to write {path}: {source}")]
+    ConfigWrite {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+
     #[error("failed to parse config: {0}")]
     ConfigParse(String),
 

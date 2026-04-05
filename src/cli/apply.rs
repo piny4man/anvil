@@ -1,4 +1,11 @@
-use std::path::Path;
+//! The `apply` subcommand.
+//!
+//! Reads the dotfiles manifest, resolves which profiles to apply, and
+//! creates symlinks (or copies) for every link entry. Handles conflict
+//! resolution interactively and prints a coloured summary when finished.
+//! The core [`apply_profiles`] function is also called by `init` and `sync`.
+
+use std::path::{Path, PathBuf};
 
 use console::style;
 
@@ -9,8 +16,10 @@ use crate::linker::{LinkResult, ResolvedLink, process_link};
 use crate::ui::UiContext;
 use crate::ui::prompt::ConflictAction;
 use crate::ui::summary::ApplySummary;
-use crate::ui::theme::{INDENT, SYMBOL_ARROW};
+use crate::ui::theme::SYMBOL_ARROW;
 
+/// Entry point for `anvil apply`. Discovers the repo, loads the manifest,
+/// resolves profiles, and applies all links.
 pub fn run(profiles: Vec<String>, ctx: &UiContext) -> Result<()> {
     let repo_dir = discover_repo()?;
     let manifest_path = repo_dir.join("anvil.toml");
@@ -51,25 +60,21 @@ pub fn apply_profiles(
             match result {
                 LinkResult::Linked => {
                     summary.linked += 1;
-                    if !ctx.quiet {
-                        println!(
-                            "{INDENT}{} {} {} {}",
-                            style("linked").green(),
-                            link.dest.display(),
-                            SYMBOL_ARROW,
-                            link.src.display()
-                        );
-                    }
+                    ctx.info(&format!(
+                        "{} {} {} {}",
+                        style("linked").green(),
+                        link.dest.display(),
+                        SYMBOL_ARROW,
+                        link.src.display()
+                    ));
                 }
                 LinkResult::AlreadyCorrect => {
                     summary.skipped += 1;
-                    if !ctx.quiet {
-                        println!(
-                            "{INDENT}{} {} (already correct)",
-                            style("skip").dim(),
-                            link.dest.display()
-                        );
-                    }
+                    ctx.info(&format!(
+                        "{} {} (already correct)",
+                        style("skip").dim(),
+                        link.dest.display()
+                    ));
                 }
                 LinkResult::Conflict => {
                     handle_conflict(link, &mut summary, ctx)?;
@@ -78,6 +83,7 @@ pub fn apply_profiles(
                     summary.failed += 1;
                     ctx.warn(&msg);
                 }
+                LinkResult::Ready => unreachable!("process_link never returns Ready"),
             }
         }
     }
@@ -93,23 +99,16 @@ fn handle_conflict(link: &ResolvedLink, summary: &mut ApplySummary, ctx: &UiCont
     match action {
         ConflictAction::Skip => {
             summary.skipped += 1;
-            if !ctx.quiet {
-                println!(
-                    "{INDENT}{} {} (skipped, file exists)",
-                    style("skip").yellow(),
-                    link.dest.display()
-                );
-            }
+            ctx.info(&format!(
+                "{} {} (skipped, file exists)",
+                style("skip").yellow(),
+                link.dest.display()
+            ));
         }
         ConflictAction::Overwrite => {
             if !ctx.dry_run {
-                // Backup existing file
-                let backup = link.dest.with_extension(
-                    link.dest
-                        .extension()
-                        .map(|e| format!("{}.bak", e.to_string_lossy()))
-                        .unwrap_or_else(|| "bak".to_string()),
-                );
+                // Backup existing file by appending .bak to the full path
+                let backup = PathBuf::from(format!("{}.bak", link.dest.display()));
                 std::fs::rename(&link.dest, &backup).map_err(|e| AnvilError::SymlinkFailed {
                     path: link.dest.clone(),
                     source: e,
@@ -119,16 +118,14 @@ fn handle_conflict(link: &ResolvedLink, summary: &mut ApplySummary, ctx: &UiCont
                 match result {
                     LinkResult::Linked => {
                         summary.linked += 1;
-                        if !ctx.quiet {
-                            println!(
-                                "{INDENT}{} {} {} {} (overwrote, backup at {})",
-                                style("linked").green(),
-                                link.dest.display(),
-                                SYMBOL_ARROW,
-                                link.src.display(),
-                                backup.display()
-                            );
-                        }
+                        ctx.info(&format!(
+                            "{} {} {} {} (overwrote, backup at {})",
+                            style("linked").green(),
+                            link.dest.display(),
+                            SYMBOL_ARROW,
+                            link.src.display(),
+                            backup.display()
+                        ));
                     }
                     LinkResult::Failed(msg) => {
                         summary.failed += 1;
@@ -138,26 +135,21 @@ fn handle_conflict(link: &ResolvedLink, summary: &mut ApplySummary, ctx: &UiCont
                 }
             } else {
                 summary.linked += 1;
-                if !ctx.quiet {
-                    println!(
-                        "{INDENT}{} {} (would overwrite)",
-                        style("linked").cyan(),
-                        link.dest.display()
-                    );
-                }
+                ctx.info(&format!(
+                    "{} {} (would overwrite)",
+                    style("linked").cyan(),
+                    link.dest.display()
+                ));
             }
         }
         ConflictAction::ShowDiff => {
             // Phase 4 will add actual diff rendering.
-            // For now, skip and note it.
             summary.skipped += 1;
-            if !ctx.quiet {
-                println!(
-                    "{INDENT}{} {} (diff not yet implemented, skipping)",
-                    style("skip").yellow(),
-                    link.dest.display()
-                );
-            }
+            ctx.info(&format!(
+                "{} {} (diff not yet implemented, skipping)",
+                style("skip").yellow(),
+                link.dest.display()
+            ));
         }
     }
 

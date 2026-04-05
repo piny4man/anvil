@@ -1,3 +1,10 @@
+//! Symlink and copy engine for anvil.
+//!
+//! Resolves manifest link entries into absolute paths, checks the filesystem
+//! state of each destination, and creates symlinks (or copies in copy-mode).
+//! All conflict detection lives here; conflict *resolution* is handled by the
+//! caller (typically [`crate::cli::apply`]).
+
 use std::path::{Path, PathBuf};
 
 use crate::config::expand_tilde;
@@ -14,9 +21,11 @@ pub struct ResolvedLink {
     pub copy: bool,
 }
 
-/// The outcome of processing a single link.
-#[derive(Debug, PartialEq)]
+/// The outcome of checking or processing a single link.
+#[derive(Debug, PartialEq, Eq)]
 pub enum LinkResult {
+    /// Destination absent — ready to be linked.
+    Ready,
     /// Symlink/copy was created successfully.
     Linked,
     /// Destination already points to the correct source — no-op.
@@ -44,8 +53,7 @@ impl ResolvedLink {
     /// Checks the current state of this link on the filesystem.
     pub fn check(&self) -> LinkResult {
         if !self.dest.exists() && self.dest.symlink_metadata().is_err() {
-            // Dest doesn't exist at all — ready to link
-            return LinkResult::Linked;
+            return LinkResult::Ready;
         }
 
         // Check if it's already a symlink pointing to the right place
@@ -65,6 +73,10 @@ impl ResolvedLink {
     ///
     /// Assumes conflict resolution has already been handled if needed.
     pub fn apply(&self) -> LinkResult {
+        if !self.src.exists() {
+            return LinkResult::Failed(format!("source file not found: {}", self.src.display()));
+        }
+
         // Create parent directories
         if let Some(parent) = self.dest.parent()
             && !parent.exists()
@@ -123,17 +135,16 @@ pub fn process_link(link: &ResolvedLink, dry_run: bool) -> LinkResult {
     let state = link.check();
 
     match state {
-        LinkResult::AlreadyCorrect => LinkResult::AlreadyCorrect,
-        LinkResult::Conflict => LinkResult::Conflict,
-        LinkResult::Linked => {
-            // Dest doesn't exist — create it
+        LinkResult::Ready => {
             if dry_run {
                 LinkResult::Linked
             } else {
                 link.apply()
             }
         }
-        LinkResult::Failed(msg) => LinkResult::Failed(msg),
+        LinkResult::AlreadyCorrect => LinkResult::AlreadyCorrect,
+        LinkResult::Conflict => LinkResult::Conflict,
+        LinkResult::Linked | LinkResult::Failed(_) => state,
     }
 }
 
@@ -295,5 +306,38 @@ mod tests {
         // Second check should be AlreadyCorrect
         let result2 = process_link(&link, false);
         assert_eq!(result2, LinkResult::AlreadyCorrect);
+    }
+
+    #[test]
+    fn test_missing_source_file() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("nonexistent.txt");
+        let dest = dir.path().join("link.txt");
+
+        let link = ResolvedLink {
+            src,
+            dest,
+            copy: false,
+        };
+
+        let result = link.apply();
+        assert!(matches!(result, LinkResult::Failed(msg) if msg.contains("source file not found")));
+    }
+
+    #[test]
+    fn test_check_returns_ready_for_absent_dest() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("source.txt");
+        let dest = dir.path().join("absent.txt");
+
+        std::fs::write(&src, "hello").unwrap();
+
+        let link = ResolvedLink {
+            src,
+            dest,
+            copy: false,
+        };
+
+        assert_eq!(link.check(), LinkResult::Ready);
     }
 }
