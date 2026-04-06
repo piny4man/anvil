@@ -108,15 +108,15 @@ After this phase, the core daily loop works: init once, sync whenever.
 
 ### Acceptance criteria
 
-- [ ] `GitBackend` trait extended with `pull` method returning `PullResult`
-- [ ] `ShellGit::pull` runs `git pull` in the repo directory
-- [ ] Pull result correctly reports whether changes were fetched
-- [ ] Failed pull produces `AnvilError::GitPullFailed`
-- [ ] `anvil sync` reads local config, pulls, and re-applies
-- [ ] `anvil sync` with no local config and no `~/.dotfiles` produces a helpful error
-- [ ] Spinner shown during pull, replaced by result message
-- [ ] Unit tests for pull command construction, result parsing
-- [ ] Integration test: sync pulls and re-applies links
+- [x] `GitBackend` trait extended with `pull` method returning `PullResult`
+- [x] `ShellGit::pull` runs `git pull` in the repo directory
+- [x] Pull result correctly reports whether changes were fetched
+- [x] Failed pull produces `AnvilError::GitPullFailed`
+- [x] `anvil sync` reads local config, pulls, and re-applies
+- [x] `anvil sync` with no local config and no `~/.dotfiles` produces a helpful error
+- [x] Spinner shown during pull, replaced by result message
+- [x] Unit tests for pull command construction, result parsing
+- [x] Integration test: sync pulls and re-applies links
 
 ---
 
