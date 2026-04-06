@@ -199,9 +199,8 @@ mod tests {
         let result = discover_repo_with(None);
         // This may succeed if ~/.dotfiles exists on the system, or fail.
         // We test the error path specifically:
-        if result.is_err() {
-            let err = result.unwrap_err().to_string();
-            assert!(err.contains("anvil init"));
+        if let Err(e) = result {
+            assert!(e.to_string().contains("anvil init"));
         }
     }
 
