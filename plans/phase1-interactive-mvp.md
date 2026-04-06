@@ -78,18 +78,18 @@ After this phase, a new user can run `anvil init https://github.com/me/dotfiles`
 
 ### Acceptance criteria
 
-- [ ] `GitBackend` trait defined with `clone_repo` method
-- [ ] `ShellGit` constructs correct `git clone --depth=1` command
-- [ ] Missing git binary produces `AnvilError::GitNotFound` with a clear message
-- [ ] Failed clone produces `AnvilError::GitCloneFailed` with the URL
-- [ ] `anvil init <url>` clones repo, applies links, writes local config
-- [ ] `anvil init` without URL prompts interactively; errors in `--yes` mode (no URL to default to)
-- [ ] Clone directory prompt defaults to `~/.dotfiles`
-- [ ] Spinner shown during clone, replaced by success/failure message
-- [ ] Missing `anvil.toml` in cloned repo produces `AnvilError::ManifestNotFound`
-- [ ] After successful init, `~/.config/anvil.toml` exists with correct `clone_dir` and `profiles`
-- [ ] Unit tests for git command construction, error mapping
-- [ ] Integration test: `anvil init` with a local bare git repo fixture
+- [x] `GitBackend` trait defined with `clone_repo` method
+- [x] `ShellGit` constructs correct `git clone --depth=1` command
+- [x] Missing git binary produces `AnvilError::GitNotFound` with a clear message
+- [x] Failed clone produces `AnvilError::GitCloneFailed` with the URL
+- [x] `anvil init <url>` clones repo, applies links, writes local config
+- [x] `anvil init` without URL prompts interactively; errors in `--yes` mode (no URL to default to)
+- [x] Clone directory prompt defaults to `~/.dotfiles`
+- [x] Spinner shown during clone, replaced by success/failure message
+- [x] Missing `anvil.toml` in cloned repo produces `AnvilError::ManifestNotFound`
+- [x] After successful init, `~/.config/anvil.toml` exists with correct `clone_dir` and `profiles`
+- [x] Unit tests for git command construction, error mapping
+- [x] Integration test: `anvil init` with a local git repo fixture
 
 ---
 

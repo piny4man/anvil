@@ -47,8 +47,8 @@ Steps 2–5 can proceed in parallel after Step 1. Step 6 unifies them into the f
   - Depends on: Step 1
   - ~300 lines
 
-- [ ] **Step 4: Git Backend** — `GitBackend` trait abstracting git operations, with a `ShellGit` implementation that shells out to the git binary.
-  - Delivers: `src/git/backend.rs` (trait + PullResult), `src/git/shell.rs` (ShellGit)
+- [x] **Step 4: Git Backend** — `GitBackend` trait abstracting git operations, with a `ShellGit` implementation that shells out to the git binary.
+  - Delivers: `src/git/mod.rs` (trait + ShellGit impl with `clone_repo`)
   - Depends on: Step 1
   - ~150 lines
 
@@ -63,7 +63,7 @@ Steps 2–5 can proceed in parallel after Step 1. Step 6 unifies them into the f
   - Status: apply command implemented (repo discovery, profile resolution, linking, conflict handling, summary). Hooks deferred to plan Phase 5.
   - ~200 lines
 
-- [ ] **Step 7: init command** — Prompt for repo URL, clone, parse manifest, run apply.
+- [x] **Step 7: init command** — Prompt for repo URL, clone, parse manifest, run apply.
   - Delivers: full `src/cli/init.rs`
   - Depends on: Step 6
   - ~150 lines
