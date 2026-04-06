@@ -82,10 +82,11 @@ impl UiContext {
         prompt::multi_select(msg, options)
     }
 
-    /// Asks how to handle a conflicting file. Under `--yes`, returns `Overwrite`.
+    /// Asks how to handle a conflicting file. Under `--yes`, returns `Skip`
+    /// (safe, non-destructive default).
     pub fn conflict_resolution(&self, path: &Path) -> Result<ConflictAction> {
         if self.yes {
-            return Ok(ConflictAction::Overwrite);
+            return Ok(ConflictAction::Skip);
         }
         prompt::conflict_resolution(path)
     }
@@ -98,6 +99,13 @@ impl UiContext {
             return None;
         }
         Some(spinner::start(msg))
+    }
+
+    /// Prints an informational message to stdout. Suppressed by `--quiet`.
+    pub fn info(&self, msg: &str) {
+        if !self.quiet {
+            println!("{}{msg}", theme::INDENT);
+        }
     }
 
     /// Prints a green success message. Suppressed by `--quiet`.
