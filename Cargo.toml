@@ -2,6 +2,14 @@
 name = "anvil"
 version = "0.1.0"
 edition = "2024"
+description = "Interactive dotfiles manager — sync configs, packages, and Linux hardening posture"
+license = "MIT"
+repository = "https://github.com/piny4man/anvil"
+homepage = "https://github.com/piny4man/anvil"
+readme = "README.md"
+keywords = ["dotfiles", "cli", "symlink", "archlinux", "sysadmin"]
+categories = ["command-line-utilities", "config"]
+rust-version = "1.85"
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
@@ -9,6 +17,7 @@ inquire = "0.7"
 indicatif = "0.17"
 console = "0.15"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 toml_edit = "0.22"
 thiserror = "2"

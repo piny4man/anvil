@@ -1,0 +1,56 @@
+# Example anvil.toml — place at the root of your dotfiles Git repository.
+#
+# Bootstrap:
+#   anvil init https://github.com/you/dotfiles
+#   anvil add ~/.zshrc
+#   anvil apply --dry-run
+#   anvil apply -y
+#
+# Full reference: README.md
+
+[anvil]
+version = "1"
+default_profile = "base"
+# clone_dir = "~/.dotfiles"
+
+# ── Files ──────────────────────────────────────────────────────────
+[profiles.base]
+links = [
+  # { src = ".zshrc", dest = "~/.zshrc" },
+  # { src = ".gitconfig", dest = "~/.gitconfig" },
+  # { src = ".config/nvim", dest = "~/.config/nvim" },
+  #
+  # Copy instead of symlink:
+  # { src = "mimeapps.list", dest = "~/.config/mimeapps.list", copy = true },
+  #
+  # age-encrypted secret (requires `age` on PATH + age_identity in local config):
+  # { src = "secrets/npmrc.age", dest = "~/.npmrc", mode = "600", decrypt = "age" },
+]
+
+# Repo-relative only (no absolute paths, no ..)
+# hooks.before_apply = ["scripts/pre-apply.sh"]
+# hooks.after_apply = ["scripts/post-apply.sh"]
+
+# ── Packages (Arch) — anvil apply --packages ───────────────────────
+# packages.pacman = ["git", "ufw", "fail2ban", "age"]
+# packages.aur = []   # needs paru or yay
+
+# ── Hardening — anvil doctor / anvil apply --harden ────────────────
+# [profiles.base.harden]
+# mode = "check"   # "enforce" writes /etc/sysctl.d/99-anvil.conf (sudo)
+# sysctl = [
+#   { key = "kernel.kptr_restrict", value = "2" },
+# ]
+# ssh = { password_auth = false, root_login = false }
+# firewall = { backend = "ufw", default = "deny", allow = ["22/tcp"] }
+
+# ── Overlay profile ────────────────────────────────────────────────
+[profiles.laptop]
+extends = "base"
+# links = [
+#   { src = "laptop/hypr", dest = "~/.config/hypr" },
+# ]
+
+# Hostname → profiles (from `hostname` / whoami)
+# [machines]
+# "framework-arch" = ["base", "laptop"]

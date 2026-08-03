@@ -32,16 +32,56 @@ pub fn print_warn(msg: &str) {
     eprintln!("{INDENT}{} {msg}", style(SYMBOL_WARN).yellow().bold());
 }
 
-/// Prints the anvil ASCII banner with version info.
+/// Banner lines spelling "anvil" (dense block style).
+const BANNER: &[&str] = &[
+    r"                                   ███  ████ ",
+    r"                                  ▒▒▒  ▒▒███ ",
+    r"  ██████   ████████   █████ █████ ████  ▒███ ",
+    r" ▒▒▒▒▒███ ▒▒███▒▒███ ▒▒███ ▒▒███ ▒▒███  ▒███ ",
+    r"  ███████  ▒███ ▒███  ▒███  ▒███  ▒███  ▒███ ",
+    r" ███▒▒███  ▒███ ▒███  ▒▒███ ███   ▒███  ▒███ ",
+    r"▒▒████████ ████ █████  ▒▒█████    █████ █████",
+    r" ▒▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒▒▒    ▒▒▒▒▒    ▒▒▒▒▒ ▒▒▒▒▒ ",
+];
+
+/// Prints the anvil banner with version info (shown on `init`).
 pub fn print_header() {
     let version = env!("CARGO_PKG_VERSION");
+
     println!();
-    println!("{INDENT}{}", style("▗▄▖ █▄ █ █ █ ██▄ █").bold());
-    println!(" {}", style("▐▌ ▐▌█ ▀█ ▀▄▀ █▄█ █▄▄").bold());
+    for line in BANNER {
+        // Full blocks warm amber; light blocks slightly dimmer steel
+        println!("{INDENT}{}", colorize_banner_line(line));
+    }
     println!(
-        " {} {}",
-        style("dotfiles manager").dim(),
-        style(format!("v{version}")).dim(),
+        "{INDENT}{} {}",
+        style("forge your machine").dim(),
+        style(format!("· v{version}")).dim(),
     );
     println!();
+}
+
+/// Colour full `█` blocks amber and light `▒` blocks cooler/dimmer for depth.
+fn colorize_banner_line(line: &str) -> String {
+    let mut out = String::with_capacity(line.len() * 8);
+    for ch in line.chars() {
+        match ch {
+            '█' => {
+                out.push_str(&style("█").color256(180).bold().to_string());
+            }
+            '▒' => {
+                out.push_str(&style("▒").color256(73).to_string());
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn header_does_not_panic() {
+        super::print_header();
+    }
 }

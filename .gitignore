@@ -1,2 +1,5 @@
 /target
 .claude/
+.agents/
+.grok/
+skills-lock.json

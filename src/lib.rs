@@ -1,4 +1,12 @@
 pub mod cli;
 pub mod config;
 pub mod error;
+pub mod git;
+pub mod harden;
+pub mod hooks;
+pub mod linker;
+pub mod packages;
+pub mod paths;
+pub mod plan;
+pub mod secrets;
 pub mod ui;
