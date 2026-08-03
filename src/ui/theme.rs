@@ -32,16 +32,47 @@ pub fn print_warn(msg: &str) {
     eprintln!("{INDENT}{} {msg}", style(SYMBOL_WARN).yellow().bold());
 }
 
-/// Prints the anvil ASCII banner with version info.
+/// Prints the anvil banner with version info (shown on `init`).
+///
+/// Small forge silhouette + clear wordmark — readable on typical terminal fonts.
+///
+/// ```text
+///          ▄▄▄▄          anvil
+///       ▄█▀    ▀█▄     forge your machine
+///      █   ▀▀   █══╗  v0.1.0
+///      ▀█▄    ▄█▀  ║
+///        ▀████▀    ╝
+/// ```
 pub fn print_header() {
     let version = env!("CARGO_PKG_VERSION");
+
     println!();
-    println!("{INDENT}{}", style("▗▄▖ █▄ █ █ █ ██▄ █").bold());
-    println!(" {}", style("▐▌ ▐▌█ ▀█ ▀▄▀ █▄█ █▄▄").bold());
     println!(
-        " {} {}",
-        style("dotfiles manager").dim(),
+        "{INDENT}{}          {}",
+        style("       ▄▄▄▄").color256(73).bold(),
+        style("anvil").white().bold(),
+    );
+    println!(
+        "{INDENT}{}     {}",
+        style("    ▄█▀    ▀█▄").color256(73).bold(),
+        style("forge your machine").dim(),
+    );
+    println!(
+        "{INDENT}{}{}{}  {}",
+        style("   █   ").color256(73).bold(),
+        style("▀▀").color256(180).bold(),
+        style("   █══╗").color256(73).bold(),
         style(format!("v{version}")).dim(),
     );
+    println!("{INDENT}{}", style("   ▀█▄    ▄█▀  ║").color256(73).bold());
+    println!("{INDENT}{}", style("     ▀████▀    ╝").color256(73).bold());
     println!();
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn header_does_not_panic() {
+        super::print_header();
+    }
 }
