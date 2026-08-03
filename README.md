@@ -72,13 +72,17 @@ A dotfiles manager that guides you. Clone, link, sync — interactively or hands
 
 ## Features
 
-- Interactive prompts with sane defaults — skip everything with `--yes`
-- Symlink and copy modes for each config file
-- Profile system with inheritance (`extends`) for machine-specific overlays
+- Interactive prompts with sane defaults — `--yes` accepts prompts; `--force` allows overwrites (always backed up)
+- Symlink and copy modes for each config file; optional file modes (`mode = "600"`)
+- Profile system with inheritance (`extends`) and multi-profile merge (later wins on same dest)
 - Auto-select profiles per hostname via `[machines]` table
-- Pre/post-apply hooks for running install scripts
-- Conflict detection — overwrite, skip, or diff before touching existing files
-- `--dry-run` to preview changes without touching the filesystem
+- Pre/post-apply hooks (streamed, repo-relative only)
+- Conflict detection — overwrite, skip, or diff; backup journal + `anvil undo`
+- `--dry-run` plan for files / packages / harden
+- **Packages plane** (Arch): `packages.pacman` / `packages.aur` via `anvil apply --packages`
+- **Secrets**: `decrypt = "age"` on links (age CLI)
+- **Hardening checks**: sysctl, sshd, ufw, home perms — `anvil doctor` / `anvil apply --harden`
+- Local XDG config at `~/.config/anvil/config.toml` (repo path, profiles, age identity)
 - Works with any Git-hosted dotfiles repo
 
 ## Quick Start
@@ -197,16 +201,18 @@ Maps hostnames to profile lists. When anvil detects a matching hostname, it appl
 |---------|-------------|
 | `anvil init [url]` | Clone a dotfiles repo and apply profiles |
 | `anvil sync` | Pull latest changes and re-apply links |
-| `anvil apply` | Apply dotfiles links to the system |
+| `anvil apply` | Apply links (`--packages`, `--harden` optional) |
 | `anvil add <file>` | Adopt an existing config file into the repo |
-| `anvil status` | Show current link status |
-| `anvil doctor` | Check for common setup issues |
+| `anvil status` | Show link / package / harden status |
+| `anvil doctor` | Setup issues + security posture checks |
+| `anvil undo` | Restore from the latest backup journal |
 
 ### Global flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--yes` | `-y` | Accept all defaults, skip prompts |
+| `--yes` | `-y` | Accept all defaults, skip prompts (not destructive) |
+| `--force` | | Allow overwrites (backs up first) |
 | `--dry-run` | | Show what would happen, change nothing |
 | `--quiet` | `-q` | Suppress output except errors |
 
@@ -235,18 +241,10 @@ cargo fmt --check              # check formatting
 
 ## Project Status
 
-anvil is in early development, working through **Phase 1** of the roadmap.
+Core MVP is implemented: init/sync/apply/status/doctor/add/undo, plan-based dry-run,
+packages (pacman), age secrets, and hardening checks. See [ROADMAP.md](ROADMAP.md).
 
-| Step | Status |
-|------|--------|
-| 1. Foundation (error types, config structs) | Done |
-| 2. CLI Skeleton (clap dispatch, stub commands) | Done |
-| 3. UI Module (UiContext, prompts, spinners) | Done |
-| 4. Git Backend (GitBackend trait, ShellGit) | — |
-| 5. Linker (symlinks, copy fallback) | — |
-| 6–9. Commands & polish | — |
-
-See [ROADMAP.md](ROADMAP.md) for the full plan.
+Example manifest: [`examples/anvil.toml`](examples/anvil.toml).
 
 ## License
 

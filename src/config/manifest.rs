@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::error::{AnvilError, Result};
+use crate::paths::expand_path;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Manifest {
     pub anvil: AnvilMeta,
@@ -14,7 +15,7 @@ pub struct Manifest {
     pub machines: Option<HashMap<String, Vec<String>>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnvilMeta {
     pub version: String,
@@ -22,28 +23,73 @@ pub struct AnvilMeta {
     pub clone_dir: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
     pub extends: Option<String>,
     #[serde(default)]
     pub links: Vec<Link>,
     pub hooks: Option<Hooks>,
+    pub packages: Option<Packages>,
+    pub harden: Option<Harden>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Link {
     pub src: String,
     pub dest: String,
     pub copy: Option<bool>,
+    /// Octal file mode as string, e.g. "600".
+    pub mode: Option<String>,
+    /// Decrypt backend, e.g. "age".
+    pub decrypt: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Hooks {
     pub before_apply: Option<Vec<String>>,
     pub after_apply: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Packages {
+    pub pacman: Option<Vec<String>>,
+    pub aur: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Harden {
+    /// "check" (default) or "enforce".
+    pub mode: Option<String>,
+    pub sysctl: Option<Vec<SysctlEntry>>,
+    pub firewall: Option<Firewall>,
+    pub ssh: Option<SshHarden>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SysctlEntry {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Firewall {
+    pub backend: Option<String>,
+    pub default: Option<String>,
+    pub allow: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SshHarden {
+    pub password_auth: Option<bool>,
+    pub root_login: Option<bool>,
 }
 
 impl Manifest {
@@ -75,11 +121,9 @@ impl Manifest {
 
 impl AnvilMeta {
     pub fn clone_dir_or_default(&self) -> Result<PathBuf> {
-        let home = dirs::home_dir().ok_or(AnvilError::HomeDirNotFound)?;
         match &self.clone_dir {
-            Some(dir) if dir.starts_with("~/") => Ok(home.join(&dir[2..])),
-            Some(dir) => Ok(PathBuf::from(dir)),
-            None => Ok(home.join(".dotfiles")),
+            Some(dir) => expand_path(dir),
+            None => expand_path("~/.dotfiles"),
         }
     }
 }
@@ -247,6 +291,17 @@ version = "1"
     }
 
     #[test]
+    fn test_clone_dir_bare_tilde() {
+        let meta = AnvilMeta {
+            version: "1".to_string(),
+            default_profile: None,
+            clone_dir: Some("~".to_string()),
+        };
+        let path = meta.clone_dir_or_default().unwrap();
+        assert_eq!(path, dirs::home_dir().unwrap());
+    }
+
+    #[test]
     fn test_clone_dir_absolute_path() {
         let meta = AnvilMeta {
             version: "1".to_string(),
@@ -294,5 +349,46 @@ links = [
         let base = manifest.get_profile("base").unwrap();
         assert_eq!(base.links[0].copy, Some(true));
         assert_eq!(base.links[1].copy, None);
+    }
+
+    #[test]
+    fn test_link_mode_and_decrypt() {
+        let toml = r#"
+[anvil]
+version = "1"
+
+[profiles.base]
+links = [
+  { src = "secrets/x.age", dest = "~/.npmrc", mode = "600", decrypt = "age" },
+]
+"#;
+        let manifest = Manifest::parse_toml(toml).unwrap();
+        let link = &manifest.get_profile("base").unwrap().links[0];
+        assert_eq!(link.mode.as_deref(), Some("600"));
+        assert_eq!(link.decrypt.as_deref(), Some("age"));
+    }
+
+    #[test]
+    fn test_packages_and_harden() {
+        let toml = r#"
+[anvil]
+version = "1"
+
+[profiles.base]
+packages.pacman = ["ufw", "age"]
+packages.aur = ["paru"]
+[profiles.base.harden]
+mode = "check"
+sysctl = [{ key = "kernel.kptr_restrict", value = "2" }]
+ssh = { password_auth = false, root_login = false }
+firewall = { backend = "ufw", default = "deny", allow = ["22/tcp"] }
+"#;
+        let manifest = Manifest::parse_toml(toml).unwrap();
+        let base = manifest.get_profile("base").unwrap();
+        let pkgs = base.packages.as_ref().unwrap();
+        assert_eq!(pkgs.pacman.as_ref().unwrap(), &["ufw", "age"]);
+        let harden = base.harden.as_ref().unwrap();
+        assert_eq!(harden.mode.as_deref(), Some("check"));
+        assert_eq!(harden.ssh.as_ref().unwrap().password_auth, Some(false));
     }
 }

@@ -1,0 +1,34 @@
+# Example anvil.toml — copy into your dotfiles repo root.
+# Docs: see README.md
+
+[anvil]
+version = "1"
+default_profile = "base"
+# clone_dir = "~/.dotfiles"
+
+[profiles.base]
+links = [
+  # { src = ".zshrc", dest = "~/.zshrc" },
+  # { src = ".config/nvim", dest = "~/.config/nvim" },
+  # Secrets (requires `age` CLI + identity in ~/.config/anvil/config.toml):
+  # { src = "secrets/npmrc.age", dest = "~/.npmrc", mode = "600", decrypt = "age" },
+]
+# hooks.after_apply = ["scripts/post-apply.sh"]
+
+# packages.pacman = ["git", "ufw", "fail2ban", "age"]
+# packages.aur = []
+
+# [profiles.base.harden]
+# mode = "check"  # or "enforce" for sysctl drop-in (requires sudo)
+# sysctl = [
+#   { key = "kernel.kptr_restrict", value = "2" },
+# ]
+# ssh = { password_auth = false, root_login = false }
+# firewall = { backend = "ufw", default = "deny", allow = ["22/tcp"] }
+
+[profiles.laptop]
+extends = "base"
+# links = []
+
+# [machines]
+# "my-hostname" = ["base", "laptop"]
