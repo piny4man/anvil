@@ -4,8 +4,16 @@ Interactive-by-default **dotfiles manager** for Linux (Arch-first).
 Clone a Git repo, link configs, optionally install packages, decrypt age secrets, and audit personal hardening posture.
 
 ```text
-  anvil  v0.1.0
-  forge your machine
+                                   ███  ████
+                                  ▒▒▒  ▒▒███
+  ██████   ████████   █████ █████ ████  ▒███
+ ▒▒▒▒▒███ ▒▒███▒▒███ ▒▒███ ▒▒███ ▒▒███  ▒███
+  ███████  ▒███ ▒███  ▒███  ▒███  ▒███  ▒███
+ ███▒▒███  ▒███ ▒███  ▒▒███ ███   ▒███  ▒███
+▒▒████████ ████ █████  ▒▒█████    █████ █████
+ ▒▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒▒▒    ▒▒▒▒▒    ▒▒▒▒▒ ▒▒▒▒▒
+
+  forge your machine · v0.1.0
 ```
 
 > **Status: 0.1 pre-release** — usable for personal dogfooding. The `anvil.toml` schema may still change before 1.0. See [ROADMAP.md](ROADMAP.md) and [Production readiness](#production-readiness).
@@ -284,8 +292,16 @@ anvil apply --harden -y          # check; enforce only if mode = "enforce"
 ### `anvil init` (existing anvil.toml)
 
 ```text
-  anvil  v0.1.0
-  forge your machine
+                                   ███  ████
+                                  ▒▒▒  ▒▒███
+  ██████   ████████   █████ █████ ████  ▒███
+ ▒▒▒▒▒███ ▒▒███▒▒███ ▒▒███ ▒▒███ ▒▒███  ▒███
+  ███████  ▒███ ▒███  ▒███  ▒███  ▒███  ▒███
+ ███▒▒███  ▒███ ▒███  ▒▒███ ███   ▒███  ▒███
+▒▒████████ ████ █████  ▒▒█████    █████ █████
+ ▒▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒▒▒    ▒▒▒▒▒    ▒▒▒▒▒ ▒▒▒▒▒
+
+  forge your machine · v0.1.0
 
 ? Clone into › ~/.dotfiles
   ✓ Cloned into /home/you/.dotfiles
