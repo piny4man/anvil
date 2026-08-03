@@ -34,38 +34,37 @@ pub fn print_warn(msg: &str) {
 
 /// Prints the anvil banner with version info (shown on `init`).
 ///
-/// Small forge silhouette + clear wordmark — readable on typical terminal fonts.
+/// Typographic wordmark only — no cryptic glyph art. Uses a small
+/// FIGlet-style "slant" spelling of *anvil* so it reads clearly in
+/// any monospace font.
 ///
 /// ```text
-///          ▄▄▄▄          anvil
-///       ▄█▀    ▀█▄     forge your machine
-///      █   ▀▀   █══╗  v0.1.0
-///      ▀█▄    ▄█▀  ║
-///        ▀████▀    ╝
+///                _ __
+///   ____ ____  _(_) /
+///  / __ `/ __ \/ / /
+/// / /_/ / / / / / /
+/// \__,_/_/ /_/_/_/
+///
+///   forge your machine · v0.1.0
 /// ```
 pub fn print_header() {
     let version = env!("CARGO_PKG_VERSION");
 
+    // Warm accent for the wordmark (works on dark terminals; bold helps on light)
+    let word = |s: &str| style(s).color256(180).bold();
+
+    println!();
+    println!("{INDENT}{}", word(r"               _ __"));
+    println!("{INDENT}{}", word(r"  ____ ____  _(_) /"));
+    println!("{INDENT}{}", word(r" / __ `/ __ \/ / / "));
+    println!("{INDENT}{}", word(r"/ /_/ / / / / / /  "));
+    println!("{INDENT}{}", word(r"\__,_/_/ /_/_/_/   "));
     println!();
     println!(
-        "{INDENT}{}          {}",
-        style("       ▄▄▄▄").color256(73).bold(),
-        style("anvil").white().bold(),
-    );
-    println!(
-        "{INDENT}{}     {}",
-        style("    ▄█▀    ▀█▄").color256(73).bold(),
+        "{INDENT}{} {}",
         style("forge your machine").dim(),
+        style(format!("· v{version}")).dim(),
     );
-    println!(
-        "{INDENT}{}{}{}  {}",
-        style("   █   ").color256(73).bold(),
-        style("▀▀").color256(180).bold(),
-        style("   █══╗").color256(73).bold(),
-        style(format!("v{version}")).dim(),
-    );
-    println!("{INDENT}{}", style("   ▀█▄    ▄█▀  ║").color256(73).bold());
-    println!("{INDENT}{}", style("     ▀████▀    ╝").color256(73).bold());
     println!();
 }
 
