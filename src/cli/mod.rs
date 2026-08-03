@@ -12,69 +12,86 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "anvil", about = "Dotfiles manager — forge your machine")]
+#[command(
+    long_about = "Interactive-by-default manager for personal machine config.\n\
+\n\
+Tracks files in any Git repo via anvil.toml, links them onto the system,\n\
+optionally installs packages (Arch pacman/AUR), decrypts age secrets, and\n\
+runs Linux hardening checks.\n\
+\n\
+Local state lives in ~/.config/anvil/ and ~/.local/state/anvil/.\n\
+\n\
+Safety: --yes accepts prompts without being destructive; --force is required\n\
+to overwrite existing files (always after writing a backup journal)."
+)]
 #[command(version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
 
-    /// Accept all defaults, skip prompts (not destructive by itself)
+    /// Accept prompt defaults without asking (not destructive by itself)
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 
-    /// Show what would happen without making changes
+    /// Print the plan only; change nothing on disk
     #[arg(long, global = true)]
     pub dry_run: bool,
 
-    /// Suppress output except errors
+    /// Suppress non-error output (also auto-enabled when stdout is not a TTY)
     #[arg(short, long, global = true)]
     pub quiet: bool,
 
-    /// Allow destructive overwrites (always backs up first)
+    /// Allow overwriting conflicting files (backs up first; use with apply/add)
     #[arg(long, global = true)]
     pub force: bool,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Bootstrap dotfiles on a new machine
+    /// Clone a dots repo (or reuse checkout), scaffold anvil.toml if missing, apply
     Init {
+        /// Git repository URL (HTTPS or SSH). Prompted if omitted.
         url: Option<String>,
+        /// Profile(s) to activate; defaults from [machines], default_profile, or prompt
         #[arg(short, long)]
         profile: Vec<String>,
-        /// Directory to clone into (default: ~/.dotfiles)
+        /// Clone destination (default: ~/.dotfiles)
         #[arg(long)]
         dir: Option<String>,
     },
-    /// Pull latest changes and re-apply
+    /// git pull --rebase, then re-apply links
     Sync {
-        /// Skip re-apply after pull
+        /// Only pull; do not re-apply
         #[arg(long)]
         pull_only: bool,
     },
-    /// Apply dotfiles (and optional packages/harden) to the system
+    /// Link files from the repo according to the active profile(s)
     Apply {
+        /// Override active profile(s) for this run
         #[arg(short, long)]
         profile: Vec<String>,
-        /// Also install missing packages from the manifest
+        /// Install missing packages listed in the profile (pacman / AUR helpers)
         #[arg(long)]
         packages: bool,
-        /// Run hardening checks (and enforce if mode=enforce)
+        /// Run hardening checks; enforce sysctl if harden.mode = "enforce"
         #[arg(long)]
         harden: bool,
     },
-    /// Adopt an existing file into the dotfiles repo
+    /// Move a file into the repo, link it back, and update anvil.toml
     Add {
+        /// Path to an existing config file or directory on this machine
         file: PathBuf,
+        /// Profile to attach the link to (prompted if omitted)
         #[arg(short, long)]
         profile: Option<String>,
     },
-    /// Show current link / package / harden status
+    /// Show link health, missing packages, and harden check results
     Status {
         #[arg(short, long)]
         profile: Vec<String>,
     },
-    /// Check for setup issues and security posture
+    /// Diagnose git/manifest/symlinks and optional security posture
     Doctor,
-    /// Restore files from the latest backup journal
+    /// Restore paths from the latest backup journal under ~/.local/state/anvil/backups
     Undo,
 }
