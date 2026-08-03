@@ -51,14 +51,27 @@ pub fn print_header() {
     let version = env!("CARGO_PKG_VERSION");
 
     // Warm accent for the wordmark (works on dark terminals; bold helps on light)
-    let word = |s: &str| style(s).color256(180).bold();
-
     println!();
-    println!("{INDENT}{}", word(r"               _ __"));
-    println!("{INDENT}{}", word(r"  ____ ____  _(_) /"));
-    println!("{INDENT}{}", word(r" / __ `/ __ \/ / / "));
-    println!("{INDENT}{}", word(r"/ /_/ / / / / / /  "));
-    println!("{INDENT}{}", word(r"\__,_/_/ /_/_/_/   "));
+    println!(
+        "{INDENT}{}",
+        style(r"               _ __").color256(180).bold()
+    );
+    println!(
+        "{INDENT}{}",
+        style(r"  ____ ____  _(_) /").color256(180).bold()
+    );
+    println!(
+        "{INDENT}{}",
+        style(r" / __ `/ __ \/ / / ").color256(180).bold()
+    );
+    println!(
+        "{INDENT}{}",
+        style(r"/ /_/ / / / / / /  ").color256(180).bold()
+    );
+    println!(
+        "{INDENT}{}",
+        style(r"\__,_/_/ /_/_/_/   ").color256(180).bold()
+    );
     println!();
     println!(
         "{INDENT}{} {}",
