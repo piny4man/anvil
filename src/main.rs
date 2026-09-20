@@ -13,17 +13,23 @@ fn main() {
     let result = match cli.command.unwrap_or(Command::Status {
         profile: Vec::new(),
     }) {
-        Command::Init { url, profile, dir } => cli::init::run(url, profile, dir, &ctx),
+        Command::Init {
+            url,
+            profile,
+            dir,
+            no_apply,
+        } => cli::init::run(url, profile, dir, no_apply, &ctx),
         Command::Sync { pull_only } => cli::sync::run(pull_only, &ctx),
         Command::Apply {
             profile,
             packages,
             harden,
-        } => cli::apply::run(profile, packages, harden, &ctx),
+            aur_helper,
+        } => cli::apply::run(profile, packages, harden, aur_helper, &ctx),
         Command::Add { file, profile } => cli::add::run(file, profile, &ctx),
         Command::Status { profile } => cli::status::run(profile, &ctx),
         Command::Doctor => cli::doctor::run(&ctx),
-        Command::Undo => cli::undo::run(&ctx),
+        Command::Undo { list, id } => cli::undo::run(list, id, &ctx),
     };
 
     if let Err(e) = result {

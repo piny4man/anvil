@@ -36,13 +36,6 @@ pub enum LinkStatus {
 /// Inspect current state of dest relative to desired src.
 pub fn inspect(link: &ResolvedLink) -> Result<LinkStatus> {
     let dest = &link.dest;
-    if !dest.exists() && !dest.symlink_metadata().is_ok() {
-        // truly missing
-        if dest.symlink_metadata().is_err() {
-            return Ok(LinkStatus::Missing);
-        }
-    }
-
     let meta = match dest.symlink_metadata() {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(LinkStatus::Missing),
@@ -55,64 +48,43 @@ pub fn inspect(link: &ResolvedLink) -> Result<LinkStatus> {
     };
 
     if meta.file_type().is_symlink() {
-        match fs::read_link(dest) {
-            Ok(target) => {
-                let canonical_target = if target.is_absolute() {
-                    target
-                } else {
-                    dest.parent().unwrap_or(Path::new("/")).join(target)
-                };
-                // Compare as paths (may not exist if broken)
-                if !dest.exists() {
-                    return Ok(LinkStatus::Broken);
-                }
-                if paths_equal(&canonical_target, &link.src)
-                    || paths_equal(
-                        &fs::canonicalize(dest).unwrap_or(canonical_target.clone()),
-                        &link.src,
-                    )
-                {
-                    // also accept if canonicalize matches
-                    if let (Ok(a), Ok(b)) = (fs::canonicalize(dest), fs::canonicalize(&link.src))
-                        && a == b
-                    {
-                        return Ok(LinkStatus::Correct);
-                    }
-                    if canonical_target == link.src {
-                        return Ok(LinkStatus::Correct);
-                    }
-                    // read_link exact match
-                    if fs::read_link(dest).ok().as_ref() == Some(&link.src) {
-                        return Ok(LinkStatus::Correct);
-                    }
-                    return Ok(LinkStatus::Conflict);
-                }
-                if fs::read_link(dest).ok().as_ref() == Some(&link.src) {
-                    return Ok(LinkStatus::Correct);
-                }
-                // broken if target missing
-                if !canonical_target.exists() && !link.src.exists() {
-                    return Ok(LinkStatus::Broken);
-                }
+        let target = match fs::read_link(dest) {
+            Ok(t) => t,
+            Err(_) => return Ok(LinkStatus::Broken),
+        };
+        // `exists` follows the symlink; false means dangling.
+        if !dest.exists() {
+            return if link.src.exists() {
                 Ok(LinkStatus::Conflict)
-            }
-            Err(_) => Ok(LinkStatus::Broken),
+            } else {
+                Ok(LinkStatus::Broken)
+            };
         }
-    } else if link.copy {
-        // compare contents
-        if files_identical(&link.src, dest)? {
+        if symlink_points_to(&target, dest, &link.src) {
+            return Ok(LinkStatus::Correct);
+        }
+        return Ok(LinkStatus::Conflict);
+    }
+
+    if link.copy {
+        if trees_identical(&link.src, dest)? {
             Ok(LinkStatus::Correct)
         } else {
             Ok(LinkStatus::Conflict)
         }
     } else {
-        // regular file/dir where we want symlink
         Ok(LinkStatus::Conflict)
     }
 }
 
-fn paths_equal(a: &Path, b: &Path) -> bool {
-    a == b
+fn symlink_points_to(read_link: &Path, dest: &Path, src: &Path) -> bool {
+    if read_link == src {
+        return true;
+    }
+    match (fs::canonicalize(dest), fs::canonicalize(src)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 fn files_identical(a: &Path, b: &Path) -> Result<bool> {
@@ -128,6 +100,57 @@ fn files_identical(a: &Path, b: &Path) -> Result<bool> {
         source: e,
     })?;
     Ok(ca == cb)
+}
+
+fn trees_identical(a: &Path, b: &Path) -> Result<bool> {
+    let a_meta = match a.symlink_metadata() {
+        Ok(m) => m,
+        Err(_) => return Ok(false),
+    };
+    let b_meta = match b.symlink_metadata() {
+        Ok(m) => m,
+        Err(_) => return Ok(false),
+    };
+    if a_meta.file_type().is_symlink() || b_meta.file_type().is_symlink() {
+        return Ok(false);
+    }
+    if a_meta.is_file() && b_meta.is_file() {
+        return files_identical(a, b);
+    }
+    if a_meta.is_dir() && b_meta.is_dir() {
+        return dirs_identical(a, b);
+    }
+    Ok(false)
+}
+
+fn dirs_identical(a: &Path, b: &Path) -> Result<bool> {
+    let mut names_a: Vec<_> = fs::read_dir(a)
+        .map_err(|e| AnvilError::Io {
+            path: a.to_path_buf(),
+            source: e,
+        })?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name())
+        .collect();
+    let mut names_b: Vec<_> = fs::read_dir(b)
+        .map_err(|e| AnvilError::Io {
+            path: b.to_path_buf(),
+            source: e,
+        })?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name())
+        .collect();
+    names_a.sort();
+    names_b.sort();
+    if names_a != names_b {
+        return Ok(false);
+    }
+    for name in names_a {
+        if !trees_identical(&a.join(&name), &b.join(&name))? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Apply a resolved link (create symlink or copy). Caller handles conflicts/backups.
@@ -160,12 +183,7 @@ pub fn apply_link(link: &ResolvedLink, dry_run: bool) -> Result<()> {
             path: link.dest.clone(),
             source: e,
         })?;
-        // mode on symlink is less meaningful; apply to target if file and mode set
-        if let Some(mode) = link.mode
-            && link.src.is_file()
-        {
-            set_mode(&link.src, mode)?;
-        }
+        // Never chmod the repo source; symlink mode is not meaningful.
     }
     Ok(())
 }
@@ -298,6 +316,7 @@ pub fn default_mode_for(dest: &Path) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::symlink;
     use tempfile::tempdir;
 
     #[test]
@@ -366,5 +385,73 @@ mod tests {
             default_mode_for(Path::new("/home/u/.ssh/config")),
             Some(0o600)
         );
+    }
+
+    #[test]
+    fn dangling_symlink_with_existing_src_is_replaceable() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        let dest = dir.path().join("dest.txt");
+        fs::write(&src, "hello").unwrap();
+        symlink(dir.path().join("missing-target"), &dest).unwrap();
+
+        let link = ResolvedLink {
+            src,
+            dest,
+            copy: false,
+            mode: None,
+            decrypt: None,
+        };
+        let status = inspect(&link).unwrap();
+        assert_ne!(
+            status,
+            LinkStatus::Broken,
+            "dangling dest with existing src must be replaceable, not Broken"
+        );
+        assert!(
+            matches!(status, LinkStatus::Conflict | LinkStatus::Missing),
+            "got {status:?}"
+        );
+    }
+
+    #[test]
+    fn copy_mode_identical_directory_is_correct() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src-dir");
+        let dest = dir.path().join("dest-dir");
+        fs::create_dir_all(&src).unwrap();
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(src.join("a.txt"), "same").unwrap();
+        fs::write(dest.join("a.txt"), "same").unwrap();
+
+        let link = ResolvedLink {
+            src,
+            dest,
+            copy: true,
+            mode: None,
+            decrypt: None,
+        };
+        assert_eq!(inspect(&link).unwrap(), LinkStatus::Correct);
+    }
+
+    #[test]
+    fn apply_symlink_does_not_chmod_repo_src() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        let dest = dir.path().join("dest.txt");
+        fs::write(&src, "hello").unwrap();
+        fs::set_permissions(&src, fs::Permissions::from_mode(0o644)).unwrap();
+
+        let link = ResolvedLink {
+            src: src.clone(),
+            dest,
+            copy: false,
+            mode: Some(0o600),
+            decrypt: None,
+        };
+        apply_link(&link, false).unwrap();
+        let mode = fs::metadata(&src).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o644, "symlink apply must not chmod the repo source");
     }
 }

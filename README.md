@@ -24,12 +24,12 @@ Clone a Git repo, link configs, optionally install packages, decrypt age secrets
 
 | Need | How anvil helps |
 |------|-----------------|
-| New machine setup | `anvil init <git-url>` clones, scaffolds config if needed, applies |
+| New machine setup | `anvil init <git-url>` full-clones, scaffolds if needed, shows a plan, then apply |
 | Day-to-day sync | `anvil sync` pulls + re-applies |
-| Adopt existing files | `anvil add ~/.zshrc` moves into the repo and links back |
+| Adopt existing files | `anvil add ~/.zshrc` journals, copies into the repo, links back |
 | Preview safely | `anvil apply --dry-run` prints a plan; nothing is written |
-| Recover mistakes | Overwrites write a **backup journal**; `anvil undo` restores |
-| Arch packages | Declarative `packages.pacman` / `packages.aur` |
+| Recover mistakes | Durable **backup journals**; `anvil undo` / `undo --list` / `undo --id` |
+| Arch packages | Official repos via pacman; AUR via a **machine-local** helper |
 | Secrets | `decrypt = "age"` on link entries |
 | Hardening | sysctl / sshd / ufw / home checks via `doctor` and `apply --harden` |
 
@@ -63,12 +63,15 @@ Pre-built release binaries are not published yet.
 ### A. Empty or non-anvil dots repo (first time)
 
 ```bash
-anvil init https://github.com/you/dotfiles
+anvil init https://github.com/you/dotfiles --no-apply
 # If anvil.toml is missing → offered a starter scaffold (Yes by default)
 anvil add ~/.zshrc
 anvil add ~/.config/nvim
 # commit anvil.toml + moved files in the dots repo
-anvil apply
+anvil apply --dry-run
+anvil apply -y
+anvil apply --packages -y          # official + AUR (helper from local config)
+anvil apply --harden               # checks; enforce only if harden.mode = "enforce"
 anvil status
 anvil doctor
 ```
@@ -79,6 +82,7 @@ anvil doctor
 anvil init https://github.com/you/dotfiles
 # select profiles when prompted, or:
 anvil init https://github.com/you/dotfiles -p base -p hyprland -y
+# reuse a checkout only if origin URL matches; otherwise error
 anvil sync          # later: pull + re-apply
 anvil apply --dry-run
 anvil apply -y      # non-interactive; conflicts are skipped unless --force
@@ -87,10 +91,14 @@ anvil apply -y      # non-interactive; conflicts are skipped unless --force
 ### C. Non-interactive / CI-style
 
 ```bash
+anvil init <url> --dir ~/.dotfiles --no-apply -y
 anvil apply -y --dry-run
-anvil apply -y --force          # overwrite conflicts (backs up first)
-anvil apply -y --packages       # also install missing pacman/AUR pkgs
-anvil apply -y --harden         # run posture checks (+ enforce if configured)
+anvil apply -y --force                    # overwrite conflicts (journal first)
+anvil apply -y --packages                 # pacman + AUR helper (auto/paru/yay)
+anvil apply -y --packages --aur-helper anzen
+anvil apply --harden                      # checks; confirm before enforce
+anvil undo --list
+anvil undo                                # latest active journal
 ```
 
 ---
@@ -100,7 +108,7 @@ anvil apply -y --harden         # run posture checks (+ enforce if configured)
 | Location | Shared? | Purpose |
 |----------|---------|---------|
 | `<repo>/anvil.toml` | Yes (Git) | Profiles, links, hooks, packages, harden |
-| `~/.config/anvil/config.toml` | No (local) | `repo_path`, active `profiles`, `age_identity` |
+| `~/.config/anvil/config.toml` | No (local) | `repo_path`, `profiles`, `age_identity`, `aur_helper` |
 | `~/.local/state/anvil/backups/` | No (local) | Backup journals for `anvil undo` |
 
 ### Local config example
@@ -110,9 +118,12 @@ anvil apply -y --harden         # run posture checks (+ enforce if configured)
 repo_path = "/home/you/.dotfiles"
 profiles = ["base", "hyprland"]
 age_identity = "~/.config/age/key.txt"
+# Machine-local AUR helper. Not in anvil.toml.
+# auto (default) = first of paru, yay on PATH — never auto-picks anzen
+aur_helper = "auto"   # or "paru" | "yay" | "anzen" | "/abs/path"
 ```
 
-Written automatically by `anvil init`. Edit by hand if you move the clone.
+Written automatically by `anvil init`. Edit by hand if you move the clone. `aur_helper` is **not** a valid key in `anvil.toml`.
 
 ---
 
@@ -201,13 +212,13 @@ Unknown keys in the manifest are **rejected** (`deny_unknown_fields`) so typos f
 
 | Command | What it does |
 |---------|----------------|
-| `anvil init [url] [--dir] [-p …]` | Clone (or reuse), scaffold `anvil.toml` if missing, write local config, apply if links exist |
+| `anvil init [url] [--dir] [-p …] [--no-apply]` | Full clone (or reuse if origin matches), scaffold if missing, write local config, show plan, confirm then apply |
 | `anvil sync [--pull-only]` | `git pull --rebase --autostash`, then apply |
-| `anvil apply [-p …] [--packages] [--harden]` | Build a plan, link files, optional packages/harden |
-| `anvil add <path> [-p profile]` | Move into repo, link back, append to `anvil.toml` |
-| `anvil status [-p …]` | Linked / conflict / missing, packages, harden |
-| `anvil doctor` | git, manifest, symlink health, secret scan, harden |
-| `anvil undo` | Restore from latest backup journal |
+| `anvil apply [-p …] [--packages] [--harden] [--aur-helper]` | Plan, link files, optional packages/harden |
+| `anvil add <path> [-p profile]` | Journal dest, copy into repo, link back, append `anvil.toml` |
+| `anvil status [-p …]` | Linked / pending / conflict / broken, packages, harden |
+| `anvil doctor` | git, manifest, symlink health, AUR helper, secrets, harden |
+| `anvil undo [--list] [--id]` | Restore a backup journal (latest active, or a specific id) |
 
 Default command when none is given: **`status`**.
 
@@ -223,10 +234,11 @@ Default command when none is given: **`status`**.
 ### Safety model
 
 1. **`--yes` is not `--force`.** Under `-y`, file conflicts are **skipped** unless `--force`.
-2. **Backups before overwrite.** Journal under `~/.local/state/anvil/backups/<id>/`.
-3. **Hooks** only run repo-relative scripts; absolute paths and `..` are rejected.
-4. **Harden enforce** only when `harden.mode = "enforce"` and you pass `--harden` (sysctl drop-in may use `sudo`).
-5. Prefer **`anvil apply --dry-run`** before the first apply on a real home directory.
+2. **Journal before mutate.** Each overwrite writes `journal.json` immediately under `~/.local/state/anvil/backups/<id>/`. Empty applies do not leave a journal. Restored journals are marked `restored` and skipped by `undo` unless you pass `--id`.
+3. **Hooks cannot be undone.** Dry-run lists them; interactive apply confirms; `-y` still prints the warning. Repo-relative only (no `..`, no absolute paths).
+4. **Packages this run** are recorded on the same journal. `anvil undo` restores files, then asks (default **No**) to `sudo pacman -R` those names. `--yes` does **not** uninstall; `--force` does. Never `anzen remove`.
+5. **Harden enforce** only when `harden.mode = "enforce"` and you pass `--harden`. The sysctl drop-in is journaled before write. SSH/firewall stay check-only.
+6. Prefer **`anvil apply --dry-run`** before the first apply on a real home directory.
 
 ---
 
@@ -244,8 +256,18 @@ anvil doctor
 
 ```bash
 anvil add ~/.config/kitty
-cd "$(anvil …)"   # or: cd ~/.dotfiles
+cd ~/.dotfiles
 git add -A && git commit -m "add kitty"
+```
+
+`add` refuses a path that is already a symlink into this repo. The dest is journaled before the move, so `anvil undo` can restore it if linking fails.
+
+### Undo a bad apply
+
+```bash
+anvil undo --list          # id, status, entry count
+anvil undo                 # latest active journal (confirm)
+anvil undo --id <id>       # a specific journal
 ```
 
 ### Secrets with age
@@ -267,14 +289,26 @@ Requires the [`age`](https://github.com/FiloSottile/age) CLI on `PATH`.
 
 ### Packages (Arch)
 
+`packages.pacman` always uses `pacman`. `packages.aur` uses a **machine-local** helper — never stored in `anvil.toml`.
+
+| Helper | How it is chosen | Install argv |
+|--------|------------------|--------------|
+| `auto` (default) | First of `paru`, `yay` on `PATH`. **Never** auto-picks `anzen`. | `paru`/`yay -S --needed` |
+| `paru` / `yay` | CLI `--aur-helper` or `aur_helper` in local config | `-S --needed` [ `--noconfirm` if `-y` ] |
+| `anzen` | Only when you choose it (GPL-3; anvil execs the binary, never links it) | `anzen install` [ `--noconfirm` if `-y` ]. Never `--skipreview` / `--ask`. Review stays interactive. |
+
 ```toml
 [profiles.base]
 packages.pacman = ["ufw", "fail2ban", "age"]
-packages.aur = []   # needs paru or yay
+packages.aur = ["some-aur-package"]
 ```
 
 ```bash
+# ~/.config/anvil/config.toml
+# aur_helper = "paru"
+
 anvil apply --packages -y
+anvil apply --packages --aur-helper anzen   # review cannot be skipped
 ```
 
 ### Hardening
@@ -334,6 +368,7 @@ anvil apply --harden -y          # check; enforce only if mode = "enforce"
   Profile: base
   Repo:    /home/you/.dotfiles
   FILES     3 to link, 1 ok, 0 conflict, 0 broken
+  AUR helper: paru
   [link] .zshrc → ~/.zshrc
   ✓ Dry-run complete (no changes made)
 ```

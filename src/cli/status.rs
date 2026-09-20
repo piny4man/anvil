@@ -1,6 +1,7 @@
 use crate::config::{LocalConfig, Manifest, discover_repo, resolve_profiles, select_profile_names};
 use crate::error::Result;
 use crate::git::{GitBackend, ShellGit};
+use crate::packages;
 use crate::plan::{FileAction, build_plan};
 use crate::ui::UiContext;
 use crate::ui::theme::{INDENT, SYMBOL_ERR, SYMBOL_OK, SYMBOL_WARN};
@@ -24,116 +25,134 @@ pub fn run(profiles: Vec<String>, ctx: &UiContext) -> Result<()> {
     let clean = git.status_clean(&repo).unwrap_or(true);
     let dirty = if clean { "clean" } else { "dirty" };
 
-    if !ctx.quiet {
-        println!(
-            "{INDENT}Profile: {}  (machine: {hostname})",
-            names.join(" + ")
-        );
-        println!("{INDENT}Repo:    {remote}  ({dirty})");
-        println!();
+    ctx.line(&format!(
+        "{INDENT}Profile: {}  (machine: {hostname})",
+        names.join(" + ")
+    ));
+    ctx.line(&format!("{INDENT}Repo:    {remote}  ({dirty})"));
+
+    let helper = packages::resolve_aur_helper(None, local.aur_helper.as_deref()).ok();
+    if let Some(h) = &helper {
+        ctx.line(&format!("{INDENT}AUR helper: {}", h.display));
     }
 
     let mut linked = Vec::new();
     let mut broken = Vec::new();
     let mut conflicts = Vec::new();
+    let mut pending = Vec::new();
 
     for op in &plan.file_ops {
         match op.action {
             FileAction::SkipCorrect => linked.push(op),
             FileAction::Broken => broken.push(op),
             FileAction::Conflict => conflicts.push(op),
-            FileAction::Create | FileAction::Decrypt => broken.push(op), // not yet applied
+            FileAction::Create | FileAction::Decrypt => pending.push(op),
         }
     }
 
-    if !linked.is_empty() && !ctx.quiet {
-        println!("{INDENT}{}", style("LINKED").bold());
+    if !linked.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("LINKED").bold()));
         for op in &linked {
-            println!(
+            ctx.line(&format!(
                 "{INDENT}{} {} {} {}",
                 style(SYMBOL_OK).green().bold(),
                 op.display_dest,
                 style("→").dim(),
                 op.display_src
-            );
+            ));
         }
-        println!();
     }
 
-    if !conflicts.is_empty() && !ctx.quiet {
-        println!("{INDENT}{}", style("CONFLICT").bold());
+    if !pending.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("PENDING").bold()));
+        for op in &pending {
+            ctx.line(&format!(
+                "{INDENT}{} {} {} {}",
+                style(SYMBOL_WARN).yellow().bold(),
+                op.display_dest,
+                style("→").dim(),
+                op.display_src
+            ));
+        }
+    }
+
+    if !conflicts.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("CONFLICT").bold()));
         for op in &conflicts {
-            println!(
+            ctx.line(&format!(
                 "{INDENT}{} {} {}",
                 style(SYMBOL_WARN).yellow().bold(),
                 op.display_dest,
                 style("exists (not managed or differs)").dim()
-            );
+            ));
         }
-        println!();
     }
 
-    if !broken.is_empty() && !ctx.quiet {
-        println!("{INDENT}{}", style("MISSING / BROKEN").bold());
+    if !broken.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("MISSING / BROKEN").bold()));
         for op in &broken {
-            println!(
+            ctx.line(&format!(
                 "{INDENT}{} {} {} {}",
                 style(SYMBOL_ERR).red().bold(),
                 op.display_dest,
                 style("→").dim(),
                 op.display_src
-            );
+            ));
         }
-        println!();
     }
 
     let missing: Vec<_> = plan.packages_missing().collect();
-    if !plan.package_ops.is_empty() && !ctx.quiet {
-        println!("{INDENT}{}", style("PACKAGES").bold());
+    if !plan.package_ops.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("PACKAGES").bold()));
         for p in &plan.package_ops {
             if p.installed {
-                println!(
+                ctx.line(&format!(
                     "{INDENT}{} {} ({})",
                     style(SYMBOL_OK).green().bold(),
                     p.name,
                     p.manager
-                );
+                ));
             } else {
-                println!(
+                ctx.line(&format!(
                     "{INDENT}{} {} ({}) missing",
                     style(SYMBOL_ERR).red().bold(),
                     p.name,
                     p.manager
-                );
+                ));
             }
         }
-        println!();
     }
 
-    if !plan.harden_ops.is_empty() && !ctx.quiet {
-        println!("{INDENT}{}", style("HARDEN").bold());
+    if !plan.harden_ops.is_empty() {
+        ctx.line(&format!("{INDENT}{}", style("HARDEN").bold()));
         for h in &plan.harden_ops {
             if h.ok {
-                println!(
+                ctx.line(&format!(
                     "{INDENT}{} {} — {}",
                     style(SYMBOL_OK).green().bold(),
                     h.description,
                     h.detail
-                );
+                ));
             } else {
-                println!(
+                ctx.line(&format!(
                     "{INDENT}{} {} — {}",
                     style(SYMBOL_WARN).yellow().bold(),
                     h.description,
                     h.detail
-                );
+                ));
             }
         }
-        println!();
     }
 
     if broken.is_empty() && conflicts.is_empty() && missing.is_empty() {
-        ctx.success("All good");
+        if pending.is_empty() {
+            ctx.success("All good");
+        } else {
+            ctx.warn(&format!(
+                "{} pending link(s) — run `anvil apply`",
+                pending.len()
+            ));
+        }
     } else {
         ctx.warn(&format!(
             "{} issue(s): {} missing/broken, {} conflict(s), {} package(s) missing",

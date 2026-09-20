@@ -1,16 +1,18 @@
 use std::path::Path;
 
 use crate::config::scaffold::write_starter_manifest;
-use crate::config::{LocalConfig, Manifest};
+use crate::config::{LocalConfig, Manifest, resolve_profiles};
 use crate::error::{AnvilError, Result};
 use crate::git::{GitBackend, ShellGit};
 use crate::paths::expand_path;
+use crate::plan::{build_plan, format_plan_summary};
 use crate::ui::UiContext;
 
 pub fn run(
     url: Option<String>,
     profiles: Vec<String>,
     dir: Option<String>,
+    no_apply: bool,
     ctx: &UiContext,
 ) -> Result<()> {
     ctx.header();
@@ -36,6 +38,14 @@ pub fn run(
             return Err(AnvilError::GitCloneFailed(format!(
                 "destination exists and is not a git repository: {}",
                 clone_dir.display()
+            )));
+        }
+        let origin = git.remote_url(&clone_dir)?;
+        if !origin_matches(&url, origin.as_deref()) {
+            return Err(AnvilError::GitCloneFailed(format!(
+                "destination {} already exists with origin `{}` (expected `{url}`)",
+                clone_dir.display(),
+                origin.as_deref().unwrap_or("(none)")
             )));
         }
         ctx.warn(&format!(
@@ -130,6 +140,11 @@ pub fn run(
         .map(|p| p.links.len())
         .sum::<usize>();
 
+    if no_apply {
+        ctx.success("Skipping apply (--no-apply). Run `anvil apply` when ready.");
+        return Ok(());
+    }
+
     if link_count == 0 {
         ctx.warn("No links defined yet — repo is ready for bootstrap.");
         ctx.info("Next steps:");
@@ -141,11 +156,42 @@ pub fn run(
         return Ok(());
     }
 
+    if let Ok(resolved) = resolve_profiles(&manifest, &selected)
+        && let Ok(plan) = build_plan(&clone_dir, &resolved, false, false)
+    {
+        for line in format_plan_summary(&plan).lines() {
+            ctx.line(line);
+        }
+    }
+
     ctx.info(&format!("Applying profile: {}", selected.join(" + ")));
-    crate::cli::apply::run(selected, false, false, ctx)?;
+    let apply_now = if ctx.yes {
+        true
+    } else {
+        ctx.confirm("Apply links now?", true)?
+    };
+    if apply_now {
+        crate::cli::apply::run(selected, false, false, None, ctx)?;
+    } else {
+        ctx.warn("Skipped apply. Run `anvil apply` when ready.");
+    }
 
     ctx.success("Done! Run `anvil status` to see the current state.");
     Ok(())
+}
+
+fn origin_matches(expected: &str, actual: Option<&str>) -> bool {
+    let Some(actual) = actual else {
+        return false;
+    };
+    normalize_git_url(expected) == normalize_git_url(actual)
+}
+
+fn normalize_git_url(url: &str) -> String {
+    url.trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .to_string()
 }
 
 /// Ensure `anvil.toml` exists; scaffold on first run when the repo is empty of anvil config.
@@ -189,4 +235,22 @@ fn ensure_manifest(repo: &Path, manifest_path: &Path, ctx: &UiContext) -> Result
     ));
     ctx.info("Commit it when ready: git add anvil.toml && git commit");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn origin_matches_strips_git_suffix() {
+        assert!(origin_matches(
+            "https://github.com/you/dotfiles.git",
+            Some("https://github.com/you/dotfiles")
+        ));
+        assert!(!origin_matches(
+            "https://github.com/you/dotfiles",
+            Some("https://github.com/other/dotfiles")
+        ));
+        assert!(!origin_matches("https://github.com/you/dotfiles", None));
+    }
 }

@@ -5,6 +5,7 @@ use std::process::Command;
 
 use crate::config::{Firewall, Harden, SshHarden, SysctlEntry};
 use crate::error::{AnvilError, Result};
+use crate::linker::BackupJournal;
 use crate::plan::HardenOp;
 use crate::ui::UiContext;
 
@@ -215,7 +216,11 @@ fn check_home_permissions() -> HardenOp {
 }
 
 /// Enforce hardening (only when mode=enforce). Currently supports writing sysctl.d drop-in.
-pub fn enforce(harden: &Harden, ctx: &UiContext) -> Result<()> {
+pub fn enforce(
+    harden: &Harden,
+    ctx: &UiContext,
+    journal: Option<&mut BackupJournal>,
+) -> Result<()> {
     let mode = harden.mode.as_deref().unwrap_or("check");
     if mode != "enforce" {
         ctx.warn("harden.mode is not `enforce`; running checks only");
@@ -237,7 +242,7 @@ pub fn enforce(harden: &Harden, ctx: &UiContext) -> Result<()> {
     }
 
     if let Some(sysctls) = &harden.sysctl {
-        enforce_sysctl(sysctls, ctx)?;
+        enforce_sysctl(sysctls, ctx, journal)?;
     }
 
     // SSH/firewall enforce intentionally conservative: report only for now
@@ -250,7 +255,11 @@ pub fn enforce(harden: &Harden, ctx: &UiContext) -> Result<()> {
     Ok(())
 }
 
-fn enforce_sysctl(entries: &[SysctlEntry], ctx: &UiContext) -> Result<()> {
+fn enforce_sysctl(
+    entries: &[SysctlEntry],
+    ctx: &UiContext,
+    journal: Option<&mut BackupJournal>,
+) -> Result<()> {
     let mut body = String::from("# Managed by anvil\n");
     for e in entries {
         body.push_str(&format!("{} = {}\n", e.key, e.value));
@@ -259,6 +268,10 @@ fn enforce_sysctl(entries: &[SysctlEntry], ctx: &UiContext) -> Result<()> {
     if ctx.dry_run {
         ctx.success(&format!("would write {path}"));
         return Ok(());
+    }
+
+    if let Some(journal) = journal {
+        journal.backup_sysctl_dropin(std::path::Path::new(path))?;
     }
 
     // write via sudo tee

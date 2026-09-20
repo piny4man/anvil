@@ -3,12 +3,13 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{LocalConfig, Manifest, discover_repo};
 use crate::error::{AnvilError, Result};
-use crate::linker::{ResolvedLink, apply_link};
+use crate::linker::{BackupJournal, ResolvedLink, apply_link};
 use crate::ui::UiContext;
 
 pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()> {
     let local = LocalConfig::load()?;
     let repo = discover_repo(&local)?;
+    let repo = fs::canonicalize(&repo).unwrap_or(repo);
     let manifest_path = repo.join("anvil.toml");
     let manifest = Manifest::from_path(&manifest_path)?;
 
@@ -22,16 +23,33 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
             })?
             .join(&file)
     };
-    let abs = fs::canonicalize(&abs).unwrap_or(abs);
 
-    if !abs.exists() {
+    let meta = abs.symlink_metadata().map_err(|e| AnvilError::Io {
+        path: abs.clone(),
+        source: e,
+    })?;
+
+    if meta.file_type().is_symlink() && symlink_points_into_repo(&abs, &repo)? {
         return Err(AnvilError::Other(format!(
-            "file not found: {}",
+            "already managed by this repo: {}",
             abs.display()
         )));
     }
 
-    // profile
+    // Follow only real files/dirs so dest stays the user-facing path for symlinks we refuse above.
+    let abs = if meta.file_type().is_symlink() {
+        abs
+    } else {
+        fs::canonicalize(&abs).unwrap_or(abs)
+    };
+
+    if abs.starts_with(&repo) {
+        return Err(AnvilError::Other(format!(
+            "path is already inside the dotfiles repo: {}",
+            abs.display()
+        )));
+    }
+
     let profile_name = match profile {
         Some(p) => p,
         None => {
@@ -53,7 +71,6 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
         }
     };
 
-    // mode
     let copy = if ctx.yes {
         false
     } else {
@@ -61,13 +78,11 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
         idx == 1
     };
 
-    // destination inside repo: mirror path relative to home if under home
     let home = dirs::home_dir().ok_or(AnvilError::HomeDirNotFound)?;
     let rel = abs
         .strip_prefix(&home)
         .map(|p| PathBuf::from(".").join(p))
         .unwrap_or_else(|_| PathBuf::from("adopted").join(abs.file_name().unwrap_or_default()));
-    // store without leading "./"
     let rel_str = rel.to_string_lossy().trim_start_matches("./").to_string();
     let dest_in_repo = repo.join(&rel_str);
 
@@ -76,6 +91,13 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
     } else {
         abs.display().to_string()
     };
+
+    if dest_in_repo.exists() {
+        return Err(AnvilError::Other(format!(
+            "already exists in repo: {}",
+            dest_in_repo.display()
+        )));
+    }
 
     if ctx.dry_run {
         ctx.success(&format!(
@@ -89,6 +111,9 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
         return Ok(());
     }
 
+    let mut journal = BackupJournal::create()?;
+    journal.backup_path(&abs)?;
+
     if let Some(parent) = dest_in_repo.parent() {
         fs::create_dir_all(parent).map_err(|e| AnvilError::Io {
             path: parent.to_path_buf(),
@@ -96,30 +121,11 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
         })?;
     }
 
-    // move into repo
-    if abs.is_dir() {
-        copy_recursive(&abs, &dest_in_repo)?;
-        fs::remove_dir_all(&abs).map_err(|e| AnvilError::Io {
-            path: abs.clone(),
-            source: e,
-        })?;
-    } else {
-        fs::copy(&abs, &dest_in_repo).map_err(|e| AnvilError::CopyFailed {
-            path: dest_in_repo.clone(),
-            source: e,
-        })?;
-        fs::remove_file(&abs).map_err(|e| AnvilError::Io {
-            path: abs.clone(),
-            source: e,
-        })?;
+    if let Err(e) = adopt_into_repo(&abs, &dest_in_repo) {
+        let _ = journal.restore();
+        return Err(e);
     }
-    ctx.success(&format!(
-        "Moved   {} → {}",
-        abs.display(),
-        dest_in_repo.display()
-    ));
 
-    // link back
     let link = ResolvedLink {
         src: dest_in_repo.clone(),
         dest: abs.clone(),
@@ -127,21 +133,77 @@ pub fn run(file: PathBuf, profile: Option<String>, ctx: &UiContext) -> Result<()
         mode: None,
         decrypt: None,
     };
-    apply_link(&link, false)?;
+    if let Err(e) = apply_link(&link, false) {
+        let _ = journal.restore();
+        let _ = crate::linker::remove_path(&dest_in_repo);
+        return Err(e);
+    }
+
+    ctx.success(&format!(
+        "Moved   {} → {}",
+        abs.display(),
+        dest_in_repo.display()
+    ));
     ctx.success(&format!(
         "Linked  {} → {}",
         abs.display(),
         dest_in_repo.display()
     ));
 
-    // update anvil.toml via toml_edit
-    append_link_to_manifest(&manifest_path, &profile_name, &rel_str, &dest_display, copy)?;
+    if let Err(e) =
+        append_link_to_manifest(&manifest_path, &profile_name, &rel_str, &dest_display, copy)
+    {
+        let _ = journal.restore();
+        return Err(e);
+    }
     ctx.success("Updated anvil.toml");
     ctx.warn(&format!(
         "Don't forget to commit: cd {} && git add . && git commit",
         repo.display()
     ));
     Ok(())
+}
+
+/// Copy into the repo and verify. Does not delete `abs` — `apply_link` replaces dest after backup.
+fn adopt_into_repo(abs: &Path, dest_in_repo: &Path) -> Result<()> {
+    if abs.is_dir() {
+        crate::linker::copy_file(abs, dest_in_repo)?;
+    } else {
+        fs::copy(abs, dest_in_repo).map_err(|e| AnvilError::CopyFailed {
+            path: dest_in_repo.to_path_buf(),
+            source: e,
+        })?;
+        let orig = fs::read(abs).map_err(|e| AnvilError::Io {
+            path: abs.to_path_buf(),
+            source: e,
+        })?;
+        let copied = fs::read(dest_in_repo).map_err(|e| AnvilError::Io {
+            path: dest_in_repo.to_path_buf(),
+            source: e,
+        })?;
+        if orig != copied {
+            let _ = crate::linker::remove_path(dest_in_repo);
+            return Err(AnvilError::CopyFailed {
+                path: dest_in_repo.to_path_buf(),
+                source: std::io::Error::other("copy verification failed"),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn symlink_points_into_repo(path: &Path, repo: &Path) -> Result<bool> {
+    let target = fs::read_link(path).map_err(|e| AnvilError::Io {
+        path: path.to_path_buf(),
+        source: e,
+    })?;
+    let resolved = if target.is_absolute() {
+        target
+    } else {
+        path.parent().unwrap_or(Path::new("/")).join(target)
+    };
+    let canonical = fs::canonicalize(&resolved).unwrap_or(resolved);
+    Ok(canonical.starts_with(repo))
 }
 
 fn append_link_to_manifest(
@@ -195,8 +257,4 @@ fn append_link_to_manifest(
         source: e,
     })?;
     Ok(())
-}
-
-fn copy_recursive(src: &Path, dest: &Path) -> Result<()> {
-    crate::linker::copy_file(src, dest)
 }

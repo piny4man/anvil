@@ -3,7 +3,8 @@ use std::process::Command;
 use crate::config::{LocalConfig, Manifest, discover_repo, resolve_profiles, select_profile_names};
 use crate::error::Result;
 use crate::git::{GitBackend, ShellGit};
-use crate::plan::build_plan;
+use crate::packages;
+use crate::plan::{FileAction, build_plan};
 use crate::secrets;
 use crate::ui::UiContext;
 use crate::ui::theme::{INDENT, SYMBOL_ERR, SYMBOL_OK, SYMBOL_WARN};
@@ -18,11 +19,9 @@ struct Check {
 
 pub fn run(ctx: &UiContext) -> Result<()> {
     ctx.info("Checking anvil setup...");
-    println!();
 
     let mut checks = Vec::new();
 
-    // git
     let git_ok = Command::new("git")
         .arg("--version")
         .output()
@@ -45,9 +44,10 @@ pub fn run(ctx: &UiContext) -> Result<()> {
         },
     });
 
-    // local config / repo
     let local = LocalConfig::load()?;
     let repo = discover_repo(&local);
+    let mut uses_age = false;
+    let mut has_aur = false;
     match &repo {
         Ok(path) => {
             checks.push(Check {
@@ -69,35 +69,65 @@ pub fn run(ctx: &UiContext) -> Result<()> {
                     let names = select_profile_names(&m, &[], &local.profiles, &hostname)
                         .unwrap_or_default();
                     if let Ok(resolved) = resolve_profiles(&m, &names) {
+                        uses_age = resolved
+                            .links
+                            .iter()
+                            .any(|l| l.decrypt.as_deref() == Some("age"));
+                        has_aur = resolved
+                            .packages
+                            .aur
+                            .as_ref()
+                            .is_some_and(|v| !v.is_empty());
+
                         if let Ok(plan) = build_plan(path, &resolved, false, false) {
-                            let broken = plan
+                            let unhealthy = plan
                                 .file_ops
                                 .iter()
                                 .filter(|o| {
-                                    matches!(
-                                        o.action,
-                                        crate::plan::FileAction::Broken
-                                            | crate::plan::FileAction::Conflict
-                                            | crate::plan::FileAction::Create
-                                            | crate::plan::FileAction::Decrypt
-                                    )
+                                    matches!(o.action, FileAction::Broken | FileAction::Conflict)
+                                })
+                                .count();
+                            let pending = plan
+                                .file_ops
+                                .iter()
+                                .filter(|o| {
+                                    matches!(o.action, FileAction::Create | FileAction::Decrypt)
                                 })
                                 .count();
                             let total = plan.file_ops.len();
-                            let healthy = total.saturating_sub(broken);
+                            let healthy = total.saturating_sub(unhealthy + pending);
+                            let mut detail = format!("{healthy}/{total} healthy");
+                            if pending > 0 {
+                                detail.push_str(&format!(", {pending} pending"));
+                            }
+                            let fix = if unhealthy > 0 {
+                                let dangling = plan.file_ops.iter().any(|o| {
+                                    o.action == FileAction::Conflict
+                                        && o.link.dest.symlink_metadata().ok().is_some_and(|m| {
+                                            m.file_type().is_symlink() && !o.link.dest.exists()
+                                        })
+                                });
+                                if dangling {
+                                    Some(
+                                        "dangling dest with src present: anvil apply --force"
+                                            .into(),
+                                    )
+                                } else {
+                                    Some("anvil apply --force".into())
+                                }
+                            } else if pending > 0 {
+                                Some("anvil apply".into())
+                            } else {
+                                None
+                            };
                             checks.push(Check {
                                 name: "symlinks".into(),
-                                ok: broken == 0,
-                                detail: format!("{healthy}/{total} healthy"),
-                                fix: if broken > 0 {
-                                    Some("anvil apply --force".into())
-                                } else {
-                                    None
-                                },
+                                ok: unhealthy == 0,
+                                detail,
+                                fix,
                             });
                         }
 
-                        // harden
                         if let Some(h) = &resolved.harden {
                             for op in crate::harden::check_all(h) {
                                 checks.push(Check {
@@ -113,7 +143,6 @@ pub fn run(ctx: &UiContext) -> Result<()> {
                             }
                         }
 
-                        // secrets scan
                         let findings = secrets::scan_repo_for_plaintext_secrets(path);
                         checks.push(Check {
                             name: "plaintext secrets".into(),
@@ -161,57 +190,87 @@ pub fn run(ctx: &UiContext) -> Result<()> {
         }
     }
 
-    // age optional
-    let age_ok = Command::new("age")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    checks.push(Check {
-        name: "age (secrets)".into(),
-        ok: age_ok,
-        detail: if age_ok {
-            "found".into()
-        } else {
-            "not installed (optional)".into()
-        },
-        fix: if age_ok {
-            None
-        } else {
-            Some("pacman -S age".into())
-        },
-    });
+    if uses_age {
+        let age_ok = Command::new("age")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        checks.push(Check {
+            name: "age (secrets)".into(),
+            ok: age_ok,
+            detail: if age_ok {
+                "found".into()
+            } else {
+                "not installed".into()
+            },
+            fix: if age_ok {
+                None
+            } else {
+                Some("pacman -S age".into())
+            },
+        });
+    }
 
-    // print
-    let mut issues = 0;
-    for c in &checks {
-        if c.ok {
-            if !ctx.quiet {
-                println!(
-                    "{INDENT}{} {:<20} {}",
-                    style(SYMBOL_OK).green().bold(),
-                    c.name,
-                    style(&c.detail).dim()
-                );
+    if has_aur {
+        let helper = packages::resolve_aur_helper(None, local.aur_helper.as_deref());
+        match helper {
+            Ok(h) if !h.program.is_empty() => {
+                checks.push(Check {
+                    name: "AUR helper".into(),
+                    ok: true,
+                    detail: h.display,
+                    fix: None,
+                });
             }
-        } else {
-            issues += 1;
-            println!(
-                "{INDENT}{} {:<20} {}",
-                style(SYMBOL_ERR).red().bold(),
-                c.name,
-                c.detail
-            );
-            if let Some(fix) = &c.fix {
-                println!(
-                    "{INDENT}  {} Fix: {fix}",
-                    style(SYMBOL_WARN).yellow().bold()
-                );
+            Ok(_) => {
+                checks.push(Check {
+                    name: "AUR helper".into(),
+                    ok: false,
+                    detail: "none found (auto)".into(),
+                    fix: Some(
+                        "install paru or yay, or set aur_helper in ~/.config/anvil/config.toml"
+                            .into(),
+                    ),
+                });
+            }
+            Err(e) => {
+                checks.push(Check {
+                    name: "AUR helper".into(),
+                    ok: false,
+                    detail: e.to_string(),
+                    fix: Some("set aur_helper to paru, yay, or anzen".into()),
+                });
             }
         }
     }
 
-    println!();
+    let mut issues = 0;
+    for c in &checks {
+        if c.ok {
+            ctx.line(&format!(
+                "{INDENT}{} {:<20} {}",
+                style(SYMBOL_OK).green().bold(),
+                c.name,
+                style(&c.detail).dim()
+            ));
+        } else {
+            issues += 1;
+            ctx.line(&format!(
+                "{INDENT}{} {:<20} {}",
+                style(SYMBOL_ERR).red().bold(),
+                c.name,
+                c.detail
+            ));
+            if let Some(fix) = &c.fix {
+                ctx.line(&format!(
+                    "{INDENT}  {} Fix: {fix}",
+                    style(SYMBOL_WARN).yellow().bold()
+                ));
+            }
+        }
+    }
+
     if issues == 0 {
         ctx.success("All good!");
     } else {
