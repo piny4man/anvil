@@ -53,7 +53,7 @@ impl GitBackend for ShellGit {
             .to_str()
             .ok_or_else(|| AnvilError::InvalidPath(dest.display().to_string()))?;
 
-        let output = Self::run(&["clone", "--depth=1", url, dest_str], None)?;
+        let output = Self::run(&["clone", url, dest_str], None)?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             return Err(AnvilError::GitCloneFailed(if stderr.is_empty() {

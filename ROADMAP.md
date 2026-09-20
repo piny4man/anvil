@@ -21,9 +21,9 @@ This document tracks the implementation plan for anvil.
 ## Phase 2′ — Secrets & packages
 
 - [x] **age secrets** — `decrypt = "age"` on links; identity in local config
-- [x] **packages plane** — pacman + AUR (paru/yay); `anvil apply --packages`
+- [x] **packages plane** — pacman + AUR (paru/yay/anzen); helper is machine-local
+- [x] **Durable revert** — stackable journals, transactional add, undo --list/--id
 - [ ] Machine table auto-write on init (optional commit of hostname → profiles)
-- [ ] Deeper `add` edge cases (already-linked, directory adopt polish)
 
 ## Phase 3′ — Hardening plane
 

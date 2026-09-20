@@ -391,4 +391,18 @@ firewall = { backend = "ufw", default = "deny", allow = ["22/tcp"] }
         assert_eq!(harden.mode.as_deref(), Some("check"));
         assert_eq!(harden.ssh.as_ref().unwrap().password_auth, Some(false));
     }
+
+    #[test]
+    fn manifest_rejects_aur_helper() {
+        let toml = r#"
+[anvil]
+version = "1"
+aur_helper = "anzen"
+"#;
+        let err = Manifest::parse_toml(toml).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown field"),
+            "helper belongs in local config, not anvil.toml: {err}"
+        );
+    }
 }

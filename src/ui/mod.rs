@@ -141,4 +141,9 @@ impl UiContext {
             println!("  {msg}");
         }
     }
+
+    /// Always print. Used for `--list` / piped output that must remain visible.
+    pub fn line(&self, msg: &str) {
+        println!("  {msg}");
+    }
 }

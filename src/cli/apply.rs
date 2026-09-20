@@ -2,6 +2,7 @@ use crate::config::{LocalConfig, Manifest, discover_repo, resolve_profiles, sele
 use crate::error::{AnvilError, Result};
 use crate::hooks;
 use crate::linker::{BackupJournal, apply_link};
+use crate::packages;
 use crate::plan::{FileAction, build_plan, format_plan_summary};
 use crate::secrets;
 use crate::ui::UiContext;
@@ -12,6 +13,7 @@ pub fn run(
     profiles: Vec<String>,
     with_packages: bool,
     with_harden: bool,
+    aur_helper: Option<String>,
     ctx: &UiContext,
 ) -> Result<()> {
     let local = LocalConfig::load()?;
@@ -25,12 +27,19 @@ pub fn run(
     ctx.info(&format!("Profile: {}", names.join(" + ")));
     ctx.info(&format!("Repo:    {}", repo.display()));
 
+    let helper = packages::resolve_aur_helper(aur_helper.as_deref(), local.aur_helper.as_deref())?;
+
     let plan = build_plan(&repo, &resolved, with_packages, with_harden)?;
 
     if !ctx.quiet {
         for line in format_plan_summary(&plan).lines() {
             ctx.info(line);
         }
+    }
+
+    list_hooks(ctx, &plan.before_hooks, &plan.after_hooks);
+    if with_packages {
+        ctx.line(&format!("AUR helper: {}", helper.display));
     }
 
     if ctx.dry_run {
@@ -48,7 +57,7 @@ pub fn run(
             ));
         }
         if with_packages {
-            crate::packages::install_missing(&plan.package_ops, ctx)?;
+            packages::install_missing(&plan.package_ops, &helper, None, ctx)?;
         }
         if with_harden && let Some(h) = &resolved.harden {
             for op in crate::harden::check_all(h) {
@@ -63,8 +72,11 @@ pub fn run(
         return Ok(());
     }
 
-    // before hooks
-    hooks::run_hooks(&repo, &plan.before_hooks, ctx)?;
+    let skip_hooks = confirm_hooks(ctx, &plan.before_hooks, &plan.after_hooks)?;
+
+    if !skip_hooks {
+        hooks::run_hooks(&repo, &plan.before_hooks, ctx)?;
+    }
 
     let mut journal = BackupJournal::create()?;
     let mut summary = ApplySummary::new();
@@ -92,7 +104,6 @@ pub fn run(
                     }
                     ConflictAction::ShowDiff => {
                         show_diff(&op.link.src, &op.link.dest, ctx);
-                        // re-ask once
                         let action2 = ctx.conflict_resolution(&op.link.dest)?;
                         if action2 == ConflictAction::Overwrite || ctx.force {
                             apply_one(op, &mut journal, identity.as_deref(), ctx, &mut summary)?;
@@ -112,12 +123,8 @@ pub fn run(
         }
     }
 
-    journal.save()?;
-
-    hooks::run_hooks(&repo, &plan.after_hooks, ctx)?;
-
     if with_packages {
-        crate::packages::install_missing(&plan.package_ops, ctx)?;
+        packages::install_missing(&plan.package_ops, &helper, Some(&mut journal), ctx)?;
     }
 
     if with_harden && let Some(h) = &resolved.harden {
@@ -128,7 +135,17 @@ pub fn run(
                 ctx.warn(&format!("{} — {}", op.description, op.detail));
             }
         }
-        crate::harden::enforce(h, ctx)?;
+        crate::harden::enforce(h, ctx, Some(&mut journal))?;
+    }
+
+    if journal.is_empty() {
+        journal.discard_if_empty()?;
+    } else {
+        journal.save()?;
+    }
+
+    if !skip_hooks {
+        hooks::run_hooks(&repo, &plan.after_hooks, ctx)?;
     }
 
     summary.print(ctx);
@@ -140,6 +157,31 @@ pub fn run(
         )));
     }
     Ok(())
+}
+
+fn list_hooks(ctx: &UiContext, before: &[String], after: &[String]) {
+    if before.is_empty() && after.is_empty() {
+        return;
+    }
+    ctx.warn("hooks cannot be undone");
+    for h in before {
+        ctx.line(&format!("hook before_apply: {h}"));
+    }
+    for h in after {
+        ctx.line(&format!("hook after_apply: {h}"));
+    }
+}
+
+fn confirm_hooks(ctx: &UiContext, before: &[String], after: &[String]) -> Result<bool> {
+    if before.is_empty() && after.is_empty() {
+        return Ok(false);
+    }
+    ctx.warn("hooks cannot be undone");
+    if ctx.yes {
+        return Ok(false);
+    }
+    let run = ctx.confirm("Run hooks? They cannot be undone.", true)?;
+    Ok(!run)
 }
 
 fn apply_one(

@@ -39,5 +39,5 @@ pub fn run(pull_only: bool, ctx: &UiContext) -> Result<()> {
     }
 
     ctx.info("Re-applying links...");
-    crate::cli::apply::run(local.profiles.clone(), false, false, ctx)
+    crate::cli::apply::run(local.profiles.clone(), false, false, None, ctx)
 }

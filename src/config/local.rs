@@ -23,6 +23,9 @@ pub struct LocalConfig {
     pub profiles: Vec<String>,
     /// Path to age identity file for decrypting secrets.
     pub age_identity: Option<String>,
+    /// AUR helper: `auto` | `paru` | `yay` | `anzen` | absolute path. Not shared via git.
+    #[serde(default)]
+    pub aur_helper: Option<String>,
 }
 
 impl LocalConfig {
@@ -131,6 +134,7 @@ mod tests {
             repo_path: Some("/tmp/dots".into()),
             profiles: vec!["base".into(), "hyprland".into()],
             age_identity: Some("~/.config/age/key.txt".into()),
+            aur_helper: Some("paru".into()),
         };
         cfg.save_to(&path).unwrap();
         let loaded = LocalConfig::load_from(&path).unwrap();
@@ -153,5 +157,18 @@ mod tests {
         let path = dir.path().join("config.toml");
         fs::write(&path, "repo_path = \"/x\"\nbogus = 1\n").unwrap();
         assert!(LocalConfig::load_from(&path).is_err());
+    }
+
+    #[test]
+    fn accepts_aur_helper_field() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        fs::write(&path, "aur_helper = \"anzen\"\n").unwrap();
+        let cfg = LocalConfig::load_from(&path);
+        assert!(
+            cfg.is_ok(),
+            "aur_helper is a valid local config field: {:?}",
+            cfg.err()
+        );
     }
 }

@@ -27,13 +27,14 @@ links = [
   # { src = "secrets/npmrc.age", dest = "~/.npmrc", mode = "600", decrypt = "age" },
 ]
 
-# Repo-relative only (no absolute paths, no ..)
+# Repo-relative only (no absolute paths, no ..). Hooks cannot be undone.
 # hooks.before_apply = ["scripts/pre-apply.sh"]
 # hooks.after_apply = ["scripts/post-apply.sh"]
 
 # ── Packages (Arch) — anvil apply --packages ───────────────────────
-# packages.pacman = ["git", "ufw", "fail2ban", "age"]
-# packages.aur = []   # needs paru or yay
+# packages.pacman = ["git", "ufw", "fail2ban", "age"]   # always pacman
+# packages.aur = []   # helper is machine-local: ~/.config/anvil/config.toml aur_helper
+#                     # auto | paru | yay | anzen  (auto never picks anzen)
 
 # ── Hardening — anvil doctor / anvil apply --harden ────────────────
 # [profiles.base.harden]

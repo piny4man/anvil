@@ -58,6 +58,9 @@ pub enum Command {
         /// Clone destination (default: ~/.dotfiles)
         #[arg(long)]
         dir: Option<String>,
+        /// Write local config only; do not apply links
+        #[arg(long)]
+        no_apply: bool,
     },
     /// git pull --rebase, then re-apply links
     Sync {
@@ -76,6 +79,9 @@ pub enum Command {
         /// Run hardening checks; enforce sysctl if harden.mode = "enforce"
         #[arg(long)]
         harden: bool,
+        /// AUR helper: auto, paru, yay, anzen, or an absolute path (overrides local config)
+        #[arg(long)]
+        aur_helper: Option<String>,
     },
     /// Move a file into the repo, link it back, and update anvil.toml
     Add {
@@ -92,6 +98,13 @@ pub enum Command {
     },
     /// Diagnose git/manifest/symlinks and optional security posture
     Doctor,
-    /// Restore paths from the latest backup journal under ~/.local/state/anvil/backups
-    Undo,
+    /// Restore paths from a backup journal under ~/.local/state/anvil/backups
+    Undo {
+        /// List journals instead of restoring
+        #[arg(long)]
+        list: bool,
+        /// Restore a specific journal id (default: latest active)
+        #[arg(long)]
+        id: Option<String>,
+    },
 }
